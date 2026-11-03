@@ -43,9 +43,7 @@ third_party/ VST3 pluginterfaces (MIT, Steinberg)
 
 ## Vydanie novej verzie
 
-```
-git tag v0.5.0 && git push origin v0.5.0
-```
+Actions → **build** → Run workflow → verzia napr. `0.5.0` (alebo `git tag v0.5.0 && git push origin v0.5.0`).
 GitHub Actions zostaví C++ časti (MinGW), appku a inštalátor (NSIS) a vytvorí Release. Verzia sa berie z tagu.
 
 ## Lokálny build

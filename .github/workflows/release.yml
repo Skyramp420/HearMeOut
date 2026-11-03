@@ -6,9 +6,18 @@ on:
     tags: ['v*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Vydať verziu (napr. 0.5.0) – prázdne = len build'
+        required: false
+        default: ''
 
 permissions:
   contents: write
+
+env:
+  # verzia na vydanie: z tagu v* alebo z ručného spustenia
+  RELEASE_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || inputs.version }}
 
 jobs:
   windows:
@@ -38,11 +47,11 @@ jobs:
           Copy-Item build/HearMeOutApo.dll, install/apply-fx.ps1, install/common.ps1, install/install.ps1, install/uninstall.ps1, config/default.ini $p
           Copy-Item build/HearMeOutHost.exe app/src-tauri/
 
-      - name: Verzia z tagu
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Verzia
+        if: env.RELEASE_VERSION != ''
         shell: pwsh
         run: |
-          $v = "${{ github.ref_name }}".TrimStart('v')
+          $v = "$env:RELEASE_VERSION".TrimStart('v')
           $c = Get-Content app/src-tauri/tauri.conf.json -Raw
           ($c -replace '"version":\s*"[^"]+"', "`"version`": `"$v`"") | Set-Content app/src-tauri/tauri.conf.json -NoNewline
           $t = Get-Content app/src-tauri/Cargo.toml -Raw
@@ -63,10 +72,11 @@ jobs:
           path: app/src-tauri/target/release/bundle/nsis/*-setup.exe
 
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: env.RELEASE_VERSION != ''
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $tag = "v" + "$env:RELEASE_VERSION".TrimStart('v')
           $exe = Get-ChildItem app/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
-          gh release create "${{ github.ref_name }}" $exe.FullName --title "HearMeOut ${{ github.ref_name }}" --generate-notes
+          gh release create $tag $exe.FullName --target "${{ github.sha }}" --title "HearMeOut $tag" --generate-notes
