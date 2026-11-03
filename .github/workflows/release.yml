@@ -1,0 +1,72 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # C++ časti (APO efekt, VST host, testy) – rovnaký MinGW kompilátor, s akým sa projekt vyvíja
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja
+
+      - name: Build C++
+        shell: msys2 {0}
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXE_LINKER_FLAGS=-static
+          cmake --build build
+          ./build/hmo-tests.exe
+
+      - name: Pripraviť payload
+        shell: pwsh
+        run: |
+          $p = "app/src-tauri/payload"
+          New-Item -ItemType Directory -Force $p | Out-Null
+          Copy-Item build/HearMeOutApo.dll, install/apply-fx.ps1, install/common.ps1, install/install.ps1, install/uninstall.ps1, config/default.ini $p
+          Copy-Item build/HearMeOutHost.exe app/src-tauri/
+
+      - name: Verzia z tagu
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          $c = Get-Content app/src-tauri/tauri.conf.json -Raw
+          ($c -replace '"version":\s*"[^"]+"', "`"version`": `"$v`"") | Set-Content app/src-tauri/tauri.conf.json -NoNewline
+          $t = Get-Content app/src-tauri/Cargo.toml -Raw
+          ([regex]'(?m)^version = "[^"]+"').Replace($t, "version = `"$v`"", 1) | Set-Content app/src-tauri/Cargo.toml -NoNewline
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Build appky + inštalátor
+        working-directory: app/src-tauri
+        run: npx --yes @tauri-apps/cli@2 build --bundles nsis --config tauri.release.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HearMeOut-setup
+          path: app/src-tauri/target/release/bundle/nsis/*-setup.exe
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $exe = Get-ChildItem app/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          gh release create "${{ github.ref_name }}" $exe.FullName --title "HearMeOut ${{ github.ref_name }}" --generate-notes

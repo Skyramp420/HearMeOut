@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="sk" data-scheme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HearMeOut</title>
+<link rel="stylesheet" href="style.css">
+<script>
+  // téma ešte pred vykreslením (bez bliknutia)
+  (function(){var t='auto';try{t=localStorage.getItem('hmo.theme')||'auto'}catch(e){}
+   var dark=t==='dark'||(t==='auto'&&matchMedia('(prefers-color-scheme: dark)').matches);
+   document.documentElement.dataset.scheme=dark?'dark':'light'})();
+</script>
+</head>
+<body>
+<div class="app">
+  <div class="titlebar">
+    <div class="drag" data-tauri-drag-region></div>
+    <div class="wc">
+      <button id="wMin" title="Minimalizovať"><svg viewBox="0 0 10 10"><path d="M0 5h10"/></svg></button>
+      <button id="wMax" title="Maximalizovať"><svg viewBox="0 0 10 10"><rect x=".5" y=".5" width="9" height="9"/></svg></button>
+      <button id="wClose" class="close" title="Zavrieť"><svg viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10"/></svg></button>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div class="brand" data-tauri-drag-region>
+      <div class="logo" id="logo">
+        <svg viewBox="0 0 16 16"><rect x="5.6" y="1.6" width="4.8" height="8" rx="2.4" fill="var(--accent-ink)" stroke="none"/>
+          <path d="M3.6 7.8a4.4 4.4 0 0 0 8.8 0M8 12.2v2.2M5.8 14.4h4.4"/>
+          <g class="wave"><path d="M2.3 3.2a6.5 6.5 0 0 0-.4 4.2M13.7 3.2a6.5 6.5 0 0 1 .4 4.2"/></g></svg>
+      </div>
+      <div><b>HearMeOut</b><small>od WheresTheApp</small></div>
+    </div>
+    <nav class="nav" id="nav">
+      <div class="ind" id="navInd"></div>
+    </nav>
+    <div class="spacer"></div>
+    <div class="updcard" id="updCard" hidden></div>
+    <div class="statuscard">
+      <div class="row"><span class="dot" id="stDot"></span><span id="stText">Načítavam…</span></div>
+      <div class="sub" id="stSub">&nbsp;</div>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <section class="view" id="v-mic"></section>
+    <section class="view" id="v-presets" hidden></section>
+    <section class="view" id="v-board" hidden></section>
+    <section class="view" id="v-settings" hidden></section>
+  </main>
+</div>
+<div class="toasts" id="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "WheresTheApp",
+    "shortDescription": "Efekty na mikrofón priamo vo Windows",
+    "resources": {
+      "payload/": "payload/",
+      "HearMeOutHost.exe": "HearMeOutHost.exe"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser"
+      }
+    }
+  }
+}

@@ -1,0 +1,12 @@
+build/
+dist/
+out/
+*.wav
+.vs/
+# Tauri / Rust
+app/src-tauri/target/
+app/src-tauri/gen/
+app/src-tauri/.cargo/
+app/src-tauri/payload/
+app/src-tauri/HearMeOutHost.exe
+node_modules/

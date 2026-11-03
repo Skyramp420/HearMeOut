@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "HearMeOut",
+  "version": "0.4.0",
+  "identifier": "com.wherestheapp.hearmeout",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "HearMeOut",
+        "width": 1040,
+        "height": 720,
+        "minWidth": 860,
+        "minHeight": 600,
+        "decorations": false,
+        "center": true,
+        "visible": false,
+        "backgroundColor": "#252527"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["icons/icon.ico", "icons/icon.png"]
+  }
+}
