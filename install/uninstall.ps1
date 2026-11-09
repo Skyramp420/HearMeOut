@@ -1,6 +1,6 @@
 ﻿# HearMeOut – odinštalovanie: obnoví pôvodné efekty zariadení a odregistruje APO.
 #   uninstall.ps1 [-RemoveConfig]
-param([switch] $RemoveConfig, [switch] $Quiet)
+param([switch] $RemoveConfig, [switch] $Quiet, [switch] $Now)
 . (Join-Path $PSScriptRoot 'common.ps1')
 Assert-Admin $PSCommandPath $PSBoundParameters
 if ($Quiet) { New-Item -ItemType Directory -Force -Path $DataDir | Out-Null; Start-Transcript -Path (Join-Path $DataDir 'last-run.log') -Force | Out-Null }
@@ -19,15 +19,17 @@ foreach ($id in $ids) {
     else { Write-Host "Nepodarilo sa obnoviť $id – pozri $DataDir\install.log" -ForegroundColor Red }
 }
 
-Stop-Audio
+if ($Now) { Stop-Audio }
 try {
     $dll = Join-Path $InstallDir 'HearMeOutApo.dll'
     if (Test-Path $dll) { Start-Process "$env:SystemRoot\System32\regsvr32.exe" -ArgumentList '/u', '/s', "`"$dll`"" -Wait }
+    # DLL môže byť ešte načítaná vo Windows audiu – zmaže sa pri reštarte
+    Get-ChildItem $InstallDir -File -ErrorAction SilentlyContinue | ForEach-Object { Remove-OrDefer $_.FullName }
     Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
     if (Test-Path $StateFile) { Remove-Item $StateFile }
     if ($RemoveConfig) { Remove-Item $DataDir -Recurse -Force -ErrorAction SilentlyContinue }
 }
-finally { Start-Audio }
-Restart-Sonar -Quiet:$Quiet
+finally { if ($Now) { Start-Audio } }
+if ($Now) { Restart-Sonar -Quiet:$Quiet }
 
 Write-Host "`nHearMeOut odstránený. (Config ostal v $DataDir, ak si nepoužil -RemoveConfig)" -ForegroundColor Cyan

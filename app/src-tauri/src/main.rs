@@ -248,18 +248,18 @@ fn finish(r: Result<i32, String>) -> Result<RunResult, String> {
 }
 
 #[tauri::command]
-async fn install_on(endpoint_id: String) -> Result<RunResult, String> {
+async fn install_on(endpoint_id: String, now: bool) -> Result<RunResult, String> {
     if !endpoint_id.chars().all(|c| c.is_ascii_hexdigit() || "{}-.".contains(c)) {
         return Err("Neplatné ID zariadenia.".into());
     }
-    tauri::async_runtime::spawn_blocking(move || finish(run_elevated("install.ps1", &format!("-EndpointId \"{}\" -Quiet", endpoint_id))))
+    tauri::async_runtime::spawn_blocking(move || finish(run_elevated("install.ps1", &format!("-EndpointId \"{}\" -Quiet{}", endpoint_id, if now { " -Now" } else { "" }))))
         .await
         .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-async fn uninstall_all() -> Result<RunResult, String> {
-    tauri::async_runtime::spawn_blocking(|| finish(run_elevated("uninstall.ps1", "-Quiet")))
+async fn uninstall_all(now: bool) -> Result<RunResult, String> {
+    tauri::async_runtime::spawn_blocking(move || finish(run_elevated("uninstall.ps1", if now { "-Quiet -Now" } else { "-Quiet" })))
         .await
         .map_err(|e| e.to_string())?
 }

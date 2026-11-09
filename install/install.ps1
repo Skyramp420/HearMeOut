@@ -6,7 +6,8 @@ param(
     [string] $Device,
     [string] $EndpointId,                 # presné ID zariadenia (používa appka)
     [ValidateSet('Auto', 'Legacy', 'Stream', 'Composite')] [string] $Slot = 'Auto',
-    [switch] $Quiet                       # bez otázok (appka)
+    [switch] $Quiet,                      # bez otázok (appka)
+    [switch] $Now                         # reštartovať zvuk hneď (inak sa efekt zapne pri reštarte PC)
 )
 . (Join-Path $PSScriptRoot 'common.ps1')
 Assert-Admin $PSCommandPath $PSBoundParameters
@@ -33,9 +34,10 @@ Write-Host "`nZariadenie: $($ep.Name) ($($ep.Adapter))  $($ep.Id)" -ForegroundCo
 
 # 2) súbory – audio služba drží DLL zamknuté, preto ju na chvíľu zastavíme
 New-Item -ItemType Directory -Force -Path $InstallDir, $DataDir | Out-Null
-Stop-Audio
+$deferred = $false
+if ($Now) { Stop-Audio }
 try {
-    Copy-Item $dll -Destination $InstallDir -Force
+    $deferred = Copy-OrDefer $dll (Join-Path $InstallDir 'HearMeOutApo.dll')
     foreach ($f in 'apply-fx.ps1', 'common.ps1', 'uninstall.ps1') { Copy-Item (Join-Path $PSScriptRoot $f) -Destination $InstallDir -Force }
     $cfgSrc = Join-Path $PSScriptRoot 'default.ini'
     $cfg = Join-Path $DataDir 'config.ini'
@@ -56,9 +58,10 @@ try {
     if ($known -notcontains $ep.Id) { Add-Content -Path $StateFile -Value $ep.Id }
 }
 finally {
-    Start-Audio
+    if ($Now) { Start-Audio }
 }
-Restart-Sonar -Quiet:$Quiet
+if ($Now) { Restart-Sonar -Quiet:$Quiet }
+else { Write-Host "`nEfekt sa zapne pri najbližšom reštarte PC (zvuk sa teraz nereštartoval)." -ForegroundColor Cyan }
 
 Write-Host @"
 

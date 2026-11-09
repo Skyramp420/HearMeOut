@@ -92,3 +92,25 @@ function Restart-Sonar([switch]$Quiet) {
     }
     Write-Host 'SteelSeries GG sa nepodarilo spustiť – spusti ho ručne.' -ForegroundColor Yellow
 }
+
+# ---- odložené operácie pri reštarte PC (súbor drží audiodg zamknutý) ----
+Add-Type -Namespace HmoNative -Name Kernel -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern bool MoveFileEx(string from, string to, int flags);
+'@
+function Copy-OrDefer([string]$Src, [string]$Dst) {
+    # skús hneď; ak je súbor zamknutý, nasaď ho pri najbližšom reštarte
+    try { Copy-Item $Src -Destination $Dst -Force -ErrorAction Stop; return $false }
+    catch {
+        $staged = "$Dst.new"
+        Copy-Item $Src -Destination $staged -Force
+        if (-not [HmoNative.Kernel]::MoveFileEx($staged, $Dst, 5)) { throw "Nepodarilo sa naplánovať nahradenie $Dst" }   # REPLACE_EXISTING | DELAY_UNTIL_REBOOT
+        Write-Host "Súbor je práve používaný – nová verzia sa nasadí pri reštarte PC." -ForegroundColor Yellow
+        return $true
+    }
+}
+function Remove-OrDefer([string]$Path) {
+    if (-not (Test-Path $Path)) { return }
+    try { Remove-Item $Path -Force -ErrorAction Stop }
+    catch { [void][HmoNative.Kernel]::MoveFileEx($Path, $null, 4) }   # DELAY_UNTIL_REBOOT
+}

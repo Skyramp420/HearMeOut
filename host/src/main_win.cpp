@@ -10,6 +10,7 @@
 #include <dwmapi.h>
 #include <avrt.h>
 #include <shlobj.h>
+#include <psapi.h>
 
 #include <algorithm>
 #include <atomic>
@@ -117,6 +118,14 @@ static FILETIME g_chainStamp{};
 static std::atomic<bool> g_reprepPending{false};
 #define WM_HMO_REPREPARE (WM_APP + 1)
 
+// vráť systému pamäť, ktorú pluginy potrebovali len pri načítaní / pri otvorenom okne
+static void trimMemory() { SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1); }
+static unsigned memMb() {
+    PROCESS_MEMORY_COUNTERS_EX pm{}; pm.cb = sizeof(pm);
+    if (!GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pm, sizeof(pm))) return 0;
+    return (unsigned)(pm.WorkingSetSize / (1024 * 1024));   // rovnaké číslo ako v Správcovi úloh (približne)
+}
+
 static std::wstring statePath(const Slot& s) { return g_dir + L"\\states\\" + W(s.uid) + L".state"; }
 
 static void saveState(Slot& s) {
@@ -144,6 +153,7 @@ static void closeEditor(Slot& s) {
     if (s.view) { s.view->removed(); s.view->setFrame(nullptr); s.view->release(); s.view = nullptr; }
     if (s.editor) { HWND h = s.editor; s.editor = nullptr; DestroyWindow(h); }
     saveState(s);
+    SetTimer(g_msgWnd, 3, 1500, nullptr);   // o chvíľu uvoľni pamäť po zavretom okne
 }
 
 // chain.ini: riadky "slot=<uid>|<0/1>|<cesta>"
@@ -182,6 +192,7 @@ static void reloadChain() {
     g_slots.clear();   // unique_ptr zničí plugin
     g_slots = std::move(next);
     publishChain();
+    SetTimer(g_msgWnd, 3, 1500, nullptr);
 }
 
 static void checkChainFile(bool force) {
@@ -198,7 +209,7 @@ static void checkChainFile(bool force) {
 static void writeStatus() {
     std::ostringstream o;
     o << "{\"pid\":" << GetCurrentProcessId() << ",\"bridge\":" << (g_bridgeOk ? "true" : "false")
-      << ",\"rate\":" << g_bridgeRate.load() << ",\"underruns\":" << g_underruns.load() << ",\"slots\":[";
+      << ",\"rate\":" << g_bridgeRate.load() << ",\"underruns\":" << g_underruns.load() << ",\"mem_mb\":" << memMb() << ",\"slots\":[";
     bool first = true;
     for (auto& s : g_slots) {
         if (!first) o << ","; first = false;
@@ -379,6 +390,7 @@ static LRESULT CALLBACK MsgProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
     case WM_TIMER:
         if (wp == 1) checkChainFile(false);
         if (wp == 2) { for (auto& s : g_slots) if (s->plug && s->plug->dirty) saveState(*s); writeStatus(); }
+        if (wp == 3) { KillTimer(h, 3); trimMemory(); }
         return 0;
     case WM_ENDSESSION:
         for (auto& s : g_slots) saveState(*s);

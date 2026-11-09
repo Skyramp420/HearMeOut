@@ -157,7 +157,7 @@ const invoke = IS_APP ? TAURI.core.invoke : async (cmd, a) => {
   if (cmd === 'delete_preset') { mockPresets = mockPresets.filter(p => p.name !== a.name); return; }
   if (cmd === 'vst_chain_get') return mockChain;
   if (cmd === 'vst_chain_set') { mockChain = a.slots; return; }
-  if (cmd === 'host_status') return { running: true, bridge: true, rate: 48000, underruns: 0, slots: mockChain.map((c, i) => ({ uid: c.uid, name: c.path.split('\\').pop().replace('.vst3', ''), vendor: ['Neverdie Audio', 'Nuro Audio'][i % 2], ok: true, enabled: c.enabled })) };
+  if (cmd === 'host_status') return { running: true, bridge: true, rate: 48000, underruns: 0, mem_mb: 212, slots: mockChain.map((c, i) => ({ uid: c.uid, name: c.path.split('\\').pop().replace('.vst3', ''), vendor: ['Neverdie Audio', 'Nuro Audio'][i % 2], ok: true, enabled: c.enabled })) };
   if (cmd === 'vst_scan') return [{ name: 'Speachy', path: 'C:\\Program Files\\Common Files\\VST3\\Speachy.vst3', folder: 'VST3' }, { name: 'Xvox Pro', path: 'C:\\Program Files\\Common Files\\VST3\\Nuro Audio\\Xvox Pro.vst3', folder: 'Nuro Audio' }, { name: 'FabFilter Pro-Q 3', path: 'C:\\x\\FabFilter Pro-Q 3.vst3', folder: 'FabFilter' }];
   if (cmd === 'update_check') return { current: '0.4.0', latest: '0.4.0', available: false, notes: '', url: '', page: '' };
   if (cmd === 'monitor_start') return 'Analogue 1 + 2 (Focusrite USB Audio) → SteelSeries Sonar - Gaming';
@@ -596,7 +596,7 @@ function paintSlots() {
   bar.innerHTML = '';
   const st = !hs.running ? ['rec', 'Host nebeží', h('button', { class: 'btn small', onclick: async () => { try { await invoke('host_start'); } catch (e) { toast(String(e), true); } setTimeout(refreshHost, 600); } }, 'Spustiť')]
     : !hs.bridge ? ['amber', 'Host beží – čaká na mikrofón (spusti odposluch alebo Discord)']
-    : ['mint', `Host beží · ${(hs.rate / 1000 || 0).toFixed(1)} kHz${hs.underruns ? ` · výpadky ${hs.underruns}` : ''}`];
+    : ['mint', `Host beží · ${(hs.rate / 1000 || 0).toFixed(1)} kHz${hs.mem_mb ? ` · RAM ${hs.mem_mb} MB` : ''}${hs.underruns ? ` · výpadky ${hs.underruns}` : ''}`];
   bar.append(h('span', { class: 'dot ' + st[0] }), h('span', {}, st[1]));
   if (st[2]) bar.append(st[2]);
   box.innerHTML = '';
@@ -887,27 +887,47 @@ async function renderSettings() {
   v._own = own;
 }
 
+// kedy nasadiť: pri reštarte PC (bez výpadku zvuku) alebo hneď (zvuk na chvíľu vypadne, treba reštartovať Sonar)
+function whenDialog(title, text) {
+  return new Promise(res => {
+    const m = modal(h('div', {}, h('h3', {}, title), h('p', {}, text),
+      h('div', { class: 'whenlist' },
+        h('button', { class: 'whenopt rec', onclick: () => { m.close(); res('later'); } }, icon('check'),
+          h('div', {}, h('b', {}, 'Pri reštarte PC'), h('small', {}, 'Odporúčané – zvuk teraz nevypadne. Zmena sa prejaví po reštarte.'))),
+        h('button', { class: 'whenopt', onclick: () => { m.close(); res('now'); } }, icon('warn'),
+          h('div', {}, h('b', {}, 'Hneď'), h('small', {}, 'Zvuk na pár sekúnd vypadne. Ak používaš Sonar, môže byť potrebné ho reštartovať.'))))),
+      [['Zrušiť', () => { m.close(); res(null); }]]);
+  });
+}
 async function doInstall(dev) {
   if (!dev) return;
+  const when = await whenDialog(dev.installed ? 'Preinštalovať efekt' : 'Nainštalovať efekt', 'Kedy sa má zmena prejaviť?');
+  if (!when) return;
+  const now = when === 'now';
   if (S.monitoring) { await invoke('monitor_stop'); S.monitoring = false; paintMonitorState(); }
   const m = modal(h('div', { style: 'text-align:center' }, h('div', { class: 'spin' }), h('h3', {}, 'Inštalujem efekt…'),
-    h('p', {}, 'Potvrď admin práva. Zvuk na chvíľu vypadne a hneď sa vráti.')), []);
+    h('p', {}, now ? 'Potvrď admin práva. Zvuk na chvíľu vypadne a hneď sa vráti.' : 'Potvrď admin práva. Zvuk beží ďalej.')), []);
   try {
-    const r = await invoke('install_on', { endpointId: dev.id });
+    const r = await invoke('install_on', { endpointId: dev.id, now });
     m.close();
-    if (r.ok) { toast('Hotovo – efekty bežia na ' + (dev.adapter || dev.name)); await refreshAll(); }
-    else showLog('Inštalácia sa nepodarila', r.log);
+    if (!r.ok) showLog('Inštalácia sa nepodarila', r.log);
+    else if (now) { toast('Hotovo – efekty bežia na ' + (dev.adapter || dev.name)); await refreshAll(); }
+    else {
+      await refreshAll();
+      modal(h('div', {}, h('h3', {}, 'Hotovo – zapne sa po reštarte'), h('p', {}, 'Efekt je pripravený. Pri najbližšom reštarte PC sa nasadí nová verzia. Dovtedy beží tá, ktorá už bola nainštalovaná.')), [['OK', null, 'primary']]);
+    }
   } catch (e) { m.close(); toast(String(e), true); }
 }
 async function doUninstall() {
-  const ok = await confirmBox('Odinštalovať HearMeOut?', 'Mikrofón sa vráti do pôvodného stavu. Tvoje nastavenia a presety ostanú.', 'Odinštalovať');
-  if (!ok) return;
+  const when = await whenDialog('Odinštalovať HearMeOut?', 'Mikrofón sa vráti do pôvodného stavu. Tvoje nastavenia a presety ostanú.');
+  if (!when) return;
+  const now = when === 'now';
   if (S.monitoring) { await invoke('monitor_stop'); S.monitoring = false; }
   const m = modal(h('div', { style: 'text-align:center' }, h('div', { class: 'spin' }), h('h3', {}, 'Odinštalovávam…'), h('p', {}, 'Potvrď admin práva.')), []);
   try {
-    const r = await invoke('uninstall_all');
+    const r = await invoke('uninstall_all', { now });
     m.close();
-    if (r.ok) { toast('HearMeOut odinštalovaný'); await refreshAll(); } else showLog('Odinštalovanie sa nepodarilo', r.log);
+    if (r.ok) { toast(now ? 'HearMeOut odinštalovaný' : 'Odinštalované – úplne zmizne po reštarte PC'); await refreshAll(); } else showLog('Odinštalovanie sa nepodarilo', r.log);
   } catch (e) { m.close(); toast(String(e), true); }
 }
 function showLog(title, log) {
