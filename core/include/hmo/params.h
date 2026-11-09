@@ -58,6 +58,11 @@ struct Params {
     float deessThresholdDb = -30.0f;
     float deessRangeDb   = 8.0f;
 
+    // zábavné hlasové efekty (0 = vypnuté, 1 chipmunk, 2 monštrum, 3 robot, 4 vysielačka, 5 telefón, 6 megafón, 7 jaskyňa, 8 mimozemšťan)
+    int   funType        = 0;
+    float funAmount      = 50.0f;  // 0 … 100
+    float funMix         = 100.0f; // 0 … 100
+
     // limiter (posledná poistka proti clipu)
     bool  limEnabled     = true;
     float limCeilingDb   = -1.0f;

@@ -13,10 +13,11 @@ use tauri::{Emitter, Manager};
 #[cfg(windows)]
 mod monitor;
 mod host;
+mod sb;
 mod update;
 
 const CLSID: &str = "{6F3B2A9E-4C1D-4E8B-9A57-2D8E0C4F1B63}";
-const SECTIONS: &[&str] = &["global", "highpass", "denoise", "gate", "eq", "compressor", "saturation", "deesser", "limiter", "ui"];
+const SECTIONS: &[&str] = &["global", "highpass", "denoise", "gate", "eq", "compressor", "saturation", "deesser", "fun", "limiter", "ui"];
 
 type Values = BTreeMap<String, String>;
 
@@ -142,6 +143,7 @@ struct AppState {
     data_dir: String,
     payload_ok: bool,
     version: String,
+    apo_version: String,   // verzia efektu, ktorý práve beží v mikrofóne (status.ini), "" = nevieme
 }
 
 fn installed_ids() -> Vec<String> {
@@ -188,6 +190,8 @@ fn get_state() -> AppState {
         data_dir: data_dir().display().to_string(),
         payload_ok: payload_dir().join("HearMeOutApo.dll").exists() && payload_dir().join("install.ps1").exists(),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        apo_version: std::fs::read_to_string(data_dir().join("status.ini")).unwrap_or_default()
+            .lines().find_map(|l| l.strip_prefix("version=")).unwrap_or("").trim().to_string(),
     }
 }
 
@@ -414,6 +418,7 @@ fn main() {
             monitor_start, monitor_stop, monitor_volume,
             host::vst_scan, host::vst_chain_get, host::vst_chain_set, host::host_status,
             host::host_start, host::host_stop, host::host_open_editor, host::host_autostart,
+            sb::sb_get, sb::sb_set, sb::sb_import, sb::sb_play, sb::sb_stop, sb::sb_pick,
             update::update_check, update::update_install
         ])
         .run(tauri::generate_context!())

@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # statický CRT – DLL beží v audiodg.exe a nesmie závisieť od VC++ redistributable
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
-add_library(hmo_core STATIC core/src/dsp.cpp core/src/config.cpp)
+add_library(hmo_core STATIC core/src/dsp.cpp core/src/voicefx.cpp core/src/config.cpp)
 target_include_directories(hmo_core PUBLIC core/include)
 if(MSVC)
   target_compile_options(hmo_core PRIVATE /W4 /fp:fast /O2)
@@ -37,12 +37,12 @@ endif()
 if(WIN32)
   set(VST3_PI ${CMAKE_SOURCE_DIR}/third_party/vst3)
   add_executable(HearMeOutHost WIN32
-    host/src/main_win.cpp host/src/vst3host.cpp host/src/vst3iids.cpp
+    host/src/main_win.cpp host/src/vst3host.cpp host/src/vst3iids.cpp host/src/soundboard.cpp host/src/ma_impl.cpp
     ${VST3_PI}/pluginterfaces/base/funknown.cpp ${VST3_PI}/pluginterfaces/base/coreiids.cpp
     host/res/host.rc)
-  target_include_directories(HearMeOutHost PRIVATE ${VST3_PI} host/src core/include)
+  target_include_directories(HearMeOutHost PRIVATE ${VST3_PI} host/src core/include third_party/miniaudio)
   target_compile_definitions(HearMeOutHost PRIVATE UNICODE _UNICODE)
-  target_link_libraries(HearMeOutHost PRIVATE dwmapi avrt ole32 uuid shell32 psapi)
+  target_link_libraries(HearMeOutHost PRIVATE hmo_core dwmapi avrt ole32 uuid shell32 psapi)
   if(NOT MSVC)
     target_link_options(HearMeOutHost PRIVATE -municode -static)
   endif()

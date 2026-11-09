@@ -94,7 +94,7 @@ fn find_window() -> Option<windows_sys::Win32::Foundation::HWND> {
 fn find_window() -> Option<()> { None }
 
 #[cfg(windows)]
-fn send(cmd: &str) -> Result<(), String> {
+pub fn send(cmd: &str) -> Result<(), String> {
     use windows_sys::Win32::System::DataExchange::COPYDATASTRUCT;
     use windows_sys::Win32::UI::WindowsAndMessaging::{SendMessageTimeoutW, SMTO_ABORTIFHUNG, WM_COPYDATA};
     let h = find_window().ok_or("HearMeOut Host nebeží.")?;
@@ -105,7 +105,7 @@ fn send(cmd: &str) -> Result<(), String> {
     Ok(())
 }
 #[cfg(not(windows))]
-fn send(_: &str) -> Result<(), String> { Err("Len pre Windows".into()) }
+pub fn send(_: &str) -> Result<(), String> { Err("Len pre Windows".into()) }
 
 #[tauri::command]
 pub fn host_start() -> Result<(), String> {

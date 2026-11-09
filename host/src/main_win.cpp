@@ -26,6 +26,8 @@
 
 #include "vst3host.h"
 #include "hmo/bridge.h"
+#include "hmo/params.h"
+#include "soundboard.h"
 #include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/gui/iplugviewcontentscalesupport.h"
 
@@ -117,6 +119,10 @@ static std::atomic<uint32_t> g_underruns{0};
 static FILETIME g_chainStamp{};
 static std::atomic<bool> g_reprepPending{false};
 #define WM_HMO_REPREPARE (WM_APP + 1)
+#define WM_HMO_SB (WM_APP + 2)
+// VST pluginy načítavame len vo VST režime – inak host slúži iba soundboardu a ostane malý
+static bool g_vstWanted = true;
+static FILETIME g_cfgStamp{};
 
 // vráť systému pamäť, ktorú pluginy potrebovali len pri načítaní / pri otvorenom okne
 static void trimMemory() { SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1); }
@@ -195,7 +201,18 @@ static void reloadChain() {
     SetTimer(g_msgWnd, 3, 1500, nullptr);
 }
 
+static void unloadAll() {
+    if (g_slots.empty()) return;
+    { std::lock_guard<std::mutex> lk(g_chainMx); g_chain.clear(); }
+    for (auto& s : g_slots) if (s) closeEditor(*s);
+    g_slots.clear();
+    g_chainStamp = {};
+    logLine("VST pluginy uvoľnené (režim vlastných efektov)");
+    SetTimer(g_msgWnd, 3, 1500, nullptr);
+}
+
 static void checkChainFile(bool force) {
+    if (!g_vstWanted) { unloadAll(); return; }
     WIN32_FILE_ATTRIBUTE_DATA a{};
     if (!GetFileAttributesExW((g_dir + L"\\chain.ini").c_str(), GetFileExInfoStandard, &a)) {
         if (!g_slots.empty() || force) { g_chainStamp = {}; std::vector<std::unique_ptr<Slot>>().swap(g_slots); publishChain(); }
@@ -209,6 +226,7 @@ static void checkChainFile(bool force) {
 static void writeStatus() {
     std::ostringstream o;
     o << "{\"pid\":" << GetCurrentProcessId() << ",\"bridge\":" << (g_bridgeOk ? "true" : "false")
+      << ",\"vst\":" << (g_vstWanted ? "true" : "false") << ",\"sb\":" << sb::statusJson()
       << ",\"rate\":" << g_bridgeRate.load() << ",\"underruns\":" << g_underruns.load() << ",\"mem_mb\":" << memMb() << ",\"slots\":[";
     bool first = true;
     for (auto& s : g_slots) {
@@ -222,6 +240,23 @@ static void writeStatus() {
     o << "]}";
     std::string j = o.str();
     writeFileAtomic(g_dir + L"\\host-status.json", j.data(), j.size());
+}
+
+// režim z config.ini (ProgramData) – 0 = vlastné efekty, 1 = VST
+static void checkEngine() {
+    wchar_t buf[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"ProgramData", buf, MAX_PATH);
+    std::wstring p = (n > 0 && n < MAX_PATH ? std::wstring(buf, n) : L"C:\\ProgramData") + L"\\HearMeOut\\config.ini";
+    WIN32_FILE_ATTRIBUTE_DATA a{};
+    if (!GetFileAttributesExW(p.c_str(), GetFileExInfoStandard, &a)) return;   // bez configu nechaj, ako je
+    if (CompareFileTime(&a.ftLastWriteTime, &g_cfgStamp) == 0) return;
+    g_cfgStamp = a.ftLastWriteTime;
+    std::ifstream f(std::filesystem::path(p), std::ios::binary);
+    std::string text((std::istreambuf_iterator<char>(f)), {});
+    const bool want = hmo::parseConfig(text).engine == 1;
+    if (want == g_vstWanted) return;
+    g_vstWanted = want;
+    checkChainFile(true);
 }
 
 // ======================================================================= okno editora
@@ -378,6 +413,9 @@ static LRESULT CALLBACK MsgProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
             checkChainFile(false);
             for (auto& s : g_slots) if (s->uid == uid) { openEditor(*s); break; }
         } else if (cmd == "reload") checkChainFile(true);
+        else if (cmd.rfind("play ", 0) == 0) sb::play(cmd.substr(5));
+        else if (cmd == "stopall") sb::stopAll();
+        else if (cmd == "sbreload") sb::reload();
         else if (cmd == "quit") PostQuitMessage(0);
         writeStatus();
         return TRUE;
@@ -387,8 +425,11 @@ static LRESULT CALLBACK MsgProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         g_reprepPending = false;
         logLine("pripravené na " + std::to_string((unsigned)wp) + " Hz");
         return 0;
+    case WM_HMO_SB:
+        writeStatus();
+        return 0;
     case WM_TIMER:
-        if (wp == 1) checkChainFile(false);
+        if (wp == 1) { checkEngine(); checkChainFile(false); }
         if (wp == 2) { for (auto& s : g_slots) if (s->plug && s->plug->dirty) saveState(*s); writeStatus(); }
         if (wp == 3) { KillTimer(h, 3); trimMemory(); }
         return 0;
@@ -421,16 +462,22 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     // HWND_MESSAGE okná FindWindow nenájde – pre appku vytvoríme aj skryté top-level okno s rovnakou triedou
     HWND finder = CreateWindowExW(WS_EX_TOOLWINDOW, L"HearMeOutHostWnd", L"HearMeOutHost", WS_POPUP, 0, 0, 0, 0, nullptr, nullptr, inst, nullptr);
 
+    g_cfgStamp = {}; g_vstWanted = false; checkEngine();
     checkChainFile(true);
+    sb::start(g_dir, g_msgWnd, WM_HMO_SB);
     SetTimer(g_msgWnd, 1, 300, nullptr);
     SetTimer(g_msgWnd, 2, 1000, nullptr);
     std::thread audio(audioThread);
 
     MSG msg;
-    while (GetMessageW(&msg, nullptr, 0, 0) > 0) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+    while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        if (msg.message == WM_HOTKEY && !msg.hwnd) { sb::onHotkey((int)msg.wParam); continue; }   // RegisterHotKey(nullptr, …)
+        TranslateMessage(&msg); DispatchMessageW(&msg);
+    }
 
     g_quit = true;
     audio.join();
+    sb::stop();
     for (auto& s : g_slots) closeEditor(*s);
     { std::lock_guard<std::mutex> lk(g_chainMx); g_chain.clear(); }
     g_slots.clear();

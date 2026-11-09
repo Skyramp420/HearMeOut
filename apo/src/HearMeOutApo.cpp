@@ -13,6 +13,8 @@
 #include "hmo/version.h"
 #include "hmo/meter.h"
 #include "hmo/bridge.h"
+#include "hmo/sfx.h"
+#include "hmo/voicefx.h"
 #include <vector>
 #include <sddl.h>
 
@@ -108,6 +110,26 @@ static hmo::BridgeShared* bridge() {
     return b;
 }
 
+// ------------------------------------------------------------------ soundboard (host zapisuje zvuky, vlastník ich primieša)
+static std::atomic<hmo::SfxShared*> g_sfx{nullptr};
+static std::atomic<bool> g_sfxTried{false};
+static hmo::SfxShared* sfx() {
+    hmo::SfxShared* s = g_sfx.load(std::memory_order_acquire);
+    if (s || g_sfxTried.exchange(true)) return s;
+    SECURITY_ATTRIBUTES sa; PSECURITY_DESCRIPTOR sd;
+    SECURITY_ATTRIBUTES* psa = sharedSa(sa, sd, L"D:(A;;GA;;;SY)(A;;GA;;;LS)(A;;GA;;;BA)(A;;GA;;;IU)");
+    HANDLE h = CreateFileMappingW(INVALID_HANDLE_VALUE, psa, PAGE_READWRITE, 0, sizeof(hmo::SfxShared), HMO_SFX_NAME);
+    const bool existed = h && GetLastError() == ERROR_ALREADY_EXISTS;
+    if (sd) LocalFree(sd);
+    if (!h) return nullptr;
+    void* v = MapViewOfFile(h, FILE_MAP_WRITE, 0, 0, sizeof(hmo::SfxShared));
+    if (!v) { CloseHandle(h); return nullptr; }
+    s = static_cast<hmo::SfxShared*>(v);
+    if (!existed || s->magic != hmo::kSfxMagic) hmo::sfxInit(s);
+    g_sfx.store(s, std::memory_order_release);
+    return s;
+}
+
 // posledný spracovaný blok vlastníka – ostatné inštancie (iná appka s mikrofónom) si ho len skopírujú
 static constexpr UINT32 kShareMax = 8192;
 static float g_lastOut[kShareMax];
@@ -156,6 +178,7 @@ public:
         params_.fetch();
         chain_.setParams(params_.front());
         chain_.prepare((float)rate_);
+        fun_.prepare((float)rate_); fun_.setParams(params_.front());
         HearMeOutApo* expected = nullptr;
         g_statusOwner.compare_exchange_strong(expected, this);   // dočasne, kým sa nejaká inštancia nezamkne
         meter();
@@ -265,6 +288,7 @@ public:
         params_.fetch();
         chain_.setParams(params_.front());
         chain_.prepare((float)rate_);
+        fun_.prepare((float)rate_); fun_.setParams(params_.front());
         locked_ = true;
         bridgeLat_ = (uint32_t)std::min(2048.0, std::ceil(0.020 * rate_));   // 20 ms
         std::fill(dry_.begin(), dry_.end(), 0.0f); dryPos_ = 0;
@@ -294,7 +318,7 @@ public:
         float* dst = reinterpret_cast<float*>(co->pBuffer);
         const int C = channels_;
 
-        if (params_.fetch()) chain_.setParams(params_.front());
+        if (params_.fetch()) { chain_.setParams(params_.front()); fun_.setParams(params_.front()); }
         const hmo::Params& p = chain_.params();
 
         if (p.bypass) {
@@ -337,13 +361,21 @@ public:
             }
             // 2) VST cez hosta, inak vlastné efekty
             engineState_ = 0;
-            bool done = false;
+            bool done = false, copied = false;
+            if (!owner) copied = done = copyOwnerOutput(m);   // druhá appka s mikrofónom: rovnaký zvuk ako vlastník (aj so soundboardom)
             if (p.engine == 1) {
                 engineState_ = 2;
-                done = owner ? bridgeProcess(m, p) : copyOwnerOutput(m);
+                if (owner) done = bridgeProcess(m, p);
                 if (done) engineState_ = 1;
             }
             if (!done) for (UINT32 i = 0; i < m; ++i) wet_[i] = chain_.process(mono_[i]);
+            // 2b) zábavný efekt + soundboard (len vlastník – ostatní dostanú hotový výsledok)
+            if (!copied) {
+                bool extra = false;
+                if (fun_.active()) { for (UINT32 i = 0; i < m; ++i) wet_[i] = fun_.process(wet_[i]); extra = true; }
+                if (owner) if (hmo::SfxShared* sx = sfx()) { sx->sampleRate.store((uint32_t)rate_, std::memory_order_relaxed); extra |= hmo::sfxMix(sx, wet_.data(), m); }
+                if (extra) for (UINT32 i = 0; i < m; ++i) wet_[i] = softClip(wet_[i]);
+            }
             if (owner && n <= kShareMax) publishShared(off, m, n);
             // 3) do všetkých kanálov
             for (UINT32 i = 0; i < m; ++i) {
@@ -403,6 +435,12 @@ public:
         }
         if (under) b->underruns.fetch_add(1, std::memory_order_relaxed);
         return true;
+    }
+    static float softClip(float x) {
+        const float a = std::fabs(x);
+        if (a <= 0.8f) return x;
+        const float y = 0.8f + 0.2f * std::tanh((a - 0.8f) * 5.0f);
+        return x < 0 ? -y : y;
     }
     static float inGain(const hmo::Params& p) { return hmo::dbToLin(p.inputGainDb); }
 
@@ -501,6 +539,7 @@ private:
     std::atomic<long> refs_{1};
     std::wstring dir_;
     hmo::Chain chain_;
+    hmo::VoiceFx fun_;
     hmo::TripleBuffer<hmo::Params> params_;
     ULONGLONG configStamp_ = 0;
     bool configOk_ = false;

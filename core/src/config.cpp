@@ -72,6 +72,10 @@ Params parseConfig(const std::string& text, const Params& base) {
         {"deesser.threshold_db", &p.deessThresholdDb},
         {"deesser.range_db", &p.deessRangeDb},
 
+        {"fun.type", nullptr, nullptr, &p.funType},
+        {"fun.amount", &p.funAmount},
+        {"fun.mix", &p.funMix},
+
         {"limiter.enabled", nullptr, &p.limEnabled},
         {"limiter.ceiling_db", &p.limCeilingDb},
         {"limiter.release_ms", &p.limReleaseMs},

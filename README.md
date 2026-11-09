@@ -15,6 +15,8 @@ Aktualizácie: appka sa pri štarte sama pozrie, či je nová verzia, a ponúkne
 
 - **Vlastné efekty** – čistenie šumu, tlmenie v tichu, dynamika (Opto / Opto+FET / FET) s analógovou farbou, tón s krivkou, de-esser, limiter.
 - **VST pluginy** – tvoje VST3 pluginy (napr. Speachy, Xvox) bežia v malom hostiteľovi pod tvojím účtom a zvuk ide rovno do mikrofónu. Licencie fungujú ako v Light Hoste; ak host spadne, mikrofón sa prepne na vlastné efekty.
+- **Soundboard** – MP3/WAV/FLAC zvuky s globálnymi klávesovými skratkami (fungujú aj v hre). Idú priamo do mikrofónu a zároveň do tvojich slúchadiel, s vlastnou hlasitosťou a vyrovnaním hlasitosti.
+- **Hlasové efekty** – chipmunk, monštrum, robot, vysielačka, telefón, megafón, jaskyňa, mimozemšťan. Fungujú v oboch režimoch (aj za VST pluginmi).
 - **Odposluch** a A/B (klávesa **B**), živé metre, presety.
 
 ## Ako to funguje
@@ -22,11 +24,12 @@ Aktualizácie: appka sa pri štarte sama pozrie, či je nová verzia, a ponúkne
 ```
 Focusrite ──► HearMeOut APO (Windows audio) ──► Discord / OBS / hry
                    │  vlastné efekty
-                   └─► VST most ◄──► HearMeOutHost.exe (Speachy, Xvox…)
+                   ├─► VST most ◄──► HearMeOutHost.exe (Speachy, Xvox…)
+                   └─◄ soundboard ◄── HearMeOutHost.exe (zvuky, skratky)
 ```
 
 APO je malá DLL, ktorú Windows vloží do spracovania mikrofónu. Nastavenia číta z `C:\ProgramData\HearMeOut\config.ini`
-(appka ho zapisuje, zmena platí hneď). VST reťazec a stavy pluginov sú v `%APPDATA%\HearMeOut`.
+(appka ho zapisuje, zmena platí hneď). VST reťazec, stavy pluginov a soundboard (`soundboard.ini`, `sounds\`) sú v `%APPDATA%\HearMeOut`.
 
 ## Štruktúra
 
@@ -38,7 +41,7 @@ app/         appka (Tauri 2: Rust + HTML/CSS/JS, téma Čistá)
 install/     PowerShell inštalátor efektu (appka ho spúšťa sama)
 tools/       hmo-wav – offline spracovanie WAV rovnakým reťazcom
 tests/       testy DSP
-third_party/ VST3 pluginterfaces (MIT, Steinberg)
+third_party/ VST3 pluginterfaces (MIT, Steinberg), miniaudio (public domain / MIT-0)
 ```
 
 ## Vydanie novej verzie

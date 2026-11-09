@@ -47,6 +47,20 @@ const P = {
   sliders: '<path d="M4 2.5v11M8 2.5v11M12 2.5v11"/><rect x="2.5" y="9" width="3" height="2.2" rx=".8"/><rect x="6.5" y="4.5" width="3" height="2.2" rx=".8"/><rect x="10.5" y="7.5" width="3" height="2.2" rx=".8"/>',
   x: '<path d="m4 4 8 8M12 4l-8 8"/>',
   open: '<path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3"/>',
+  play: '<path d="M5 3.2v9.6a.5.5 0 0 0 .77.42l7.2-4.8a.5.5 0 0 0 0-.84l-7.2-4.8A.5.5 0 0 0 5 3.2Z"/>',
+  stop: '<rect x="3.5" y="3.5" width="9" height="9" rx="1.6"/>',
+  key: '<rect x="1.5" y="4" width="13" height="8" rx="1.6"/><path d="M4 6.5h.01M6.5 6.5h.01M9 6.5h.01M11.5 6.5h.01M5 9.5h6"/>',
+  off: '<circle cx="8" cy="8" r="5.5"/><path d="m4.2 11.8 7.6-7.6"/>',
+  up: '<path d="M8 13V3M4 7l4-4 4 4"/>',
+  deep: '<path d="M8 3v10M4 9l4 4 4-4"/>',
+  robot: '<rect x="3" y="5" width="10" height="8" rx="2"/><path d="M8 5V2.5M6 9h.01M10 9h.01M6.5 11.2h3M1.5 8.5v2M14.5 8.5v2"/>',
+  radio: '<rect x="2" y="6" width="12" height="7.5" rx="1.6"/><path d="m4.5 6 6-4M5.5 9.75h.01M10.5 8.5v2.5M9 9.75h3"/>',
+  phone: '<path d="M4.5 2h2l1 3-1.6 1.1a8 8 0 0 0 4 4L11 8.5l3 1v2a2 2 0 0 1-2.2 2A11 11 0 0 1 2.5 4.2 2 2 0 0 1 4.5 2Z"/>',
+  mega: '<path d="M2 6.5v3h2l6 3.5v-10L4 6.5Z"/><path d="M4.5 9.5 5.5 13h1.7"/><path d="M12.5 6a3 3 0 0 1 0 4"/>',
+  cave: '<path d="M1.5 13.5c0-6 3-10.5 6.5-10.5s6.5 4.5 6.5 10.5"/><path d="M5 13.5c0-3.5 1.4-6 3-6s3 2.5 3 6"/>',
+  alien: '<ellipse cx="8" cy="8" rx="6.5" ry="2.6"/><path d="M4.5 6.6a3.5 3.5 0 0 1 7 0M5 12.5l-1 1.5M11 12.5l1 1.5M8 11v2.5"/>',
+  drop: '<path d="M8 2v8M5 7l3 3 3-3"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/>',
+  edit: '<path d="M10.5 2.5 13.5 5.5 6 13H3v-3Z"/>',
   plug: '<path d="M6 1.75v3M10 1.75v3M4.25 4.75h7.5v2.5a3.75 3.75 0 0 1-7.5 0ZM8 11v3.25"/>',
 };
 const icon = (n, cls = 'i') => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('class', cls); s.innerHTML = P[n] || ''; return s; };
@@ -65,13 +79,14 @@ const SCHEMA = {
   'compressor.auto_makeup': [1, 'bool'], 'compressor.makeup_db': [0],
   'saturation.enabled': [1, 'bool'], 'saturation.drive': [40],
   'deesser.enabled': [1, 'bool'], 'deesser.freq': [6500], 'deesser.threshold_db': [-30], 'deesser.range_db': [8],
+  'fun.type': [0, 'int'], 'fun.amount': [50], 'fun.mix': [100],
   'limiter.enabled': [1, 'bool'], 'limiter.ceiling_db': [-1], 'limiter.release_ms': [60],
   // makrá – APO ich ignoruje, appka si podľa nich pamätá polohu hlavných posuvníkov
   'ui.clean': [55, 'int'], 'ui.dyn_char': [1, 'int'], 'ui.dyn_amount': [60, 'int'], 'ui.color': [40, 'int'],
   'ui.tone_char': [4, 'int'], 'ui.sib': [55, 'int'],
 };
 // nastavenia viazané na mikrofón/miestnosť – presety ich nemenia
-const DEVICE_KEYS = ['global.bypass', 'global.engine', 'global.input_channel', 'global.input_gain_db', 'gate.threshold_db'];
+const DEVICE_KEYS = ['global.bypass', 'global.engine', 'global.input_channel', 'global.input_gain_db', 'gate.threshold_db', 'fun.type', 'fun.amount', 'fun.mix'];
 const defaults = () => Object.fromEntries(Object.entries(SCHEMA).map(([k, [d]]) => [k, d]));
 
 function fromIni(map) {
@@ -143,10 +158,17 @@ const SOUND_KEYS = Object.keys(SCHEMA).filter(k => !DEVICE_KEYS.includes(k) && !
 const sameSound = (a, b) => SOUND_KEYS.every(k => Math.abs(+a[k] - +b[k]) < 1e-3);
 
 // ------------------------------------------------------------------ backend (alebo mock v prehliadači)
-const mockState = { registered: true, payload_ok: true, version: '0.4.0', data_dir: 'C:\\ProgramData\\HearMeOut',
+const mockState = { registered: true, payload_ok: true, version: '0.5.0', apo_version: '0.4', data_dir: 'C:\\ProgramData\\HearMeOut',
   endpoints: [{ id: '{57f146ab-a401-4aac-b5dc-cf18538cb86d}', name: 'Analogue 1 + 2', adapter: 'Focusrite USB Audio', installed: true },
               { id: '{0a1b}', name: 'Mikrofón', adapter: 'SteelSeries Arctis Nova 7', installed: false }] };
 let mockPresets = [];
+let mockPlaying = [];
+let mockBoard = { mic_volume: 80, local_volume: 60, normalize: true, stop_hk: '0,19', stop_label: 'Pause', pads: [
+  { id: 'p1', name: 'Vine boom', file: 'a.mp3', vol: 100, hk: '0,97', hk_label: 'Num 1' },
+  { id: 'p2', name: 'Bruh', file: 'b.mp3', vol: 90, hk: '0,98', hk_label: 'Num 2' },
+  { id: 'p3', name: 'Airhorn', file: 'c.mp3', vol: 70, hk: '2,51', hk_label: 'Ctrl+3' },
+  { id: 'p4', name: 'Sad violin', file: 'd.mp3', vol: 100, hk: '', hk_label: '' },
+  { id: 'p5', name: 'Applause', file: 'e.wav', vol: 100, hk: '0,101', hk_label: 'Num 5' }] };
 let mockChain = [{ uid: 'a1', enabled: true, path: 'C:\\Program Files\\Common Files\\VST3\\Speachy.vst3' }, { uid: 'b2', enabled: true, path: 'C:\\Program Files\\Common Files\\VST3\\Nuro Audio\\Xvox Pro.vst3' }];
 const invoke = IS_APP ? TAURI.core.invoke : async (cmd, a) => {
   await new Promise(r => setTimeout(r, 60));
@@ -158,7 +180,13 @@ const invoke = IS_APP ? TAURI.core.invoke : async (cmd, a) => {
   if (cmd === 'vst_chain_get') return mockChain;
   if (cmd === 'vst_chain_set') { mockChain = a.slots; return; }
   if (cmd === 'host_start') return;
-  if (cmd === 'host_status') return { running: true, bridge: true, rate: 48000, underruns: 0, mem_mb: 212, slots: mockChain.map((c, i) => ({ uid: c.uid, name: c.path.split('\\').pop().replace('.vst3', ''), vendor: ['Neverdie Audio', 'Nuro Audio'][i % 2], ok: true, enabled: c.enabled })) };
+  if (cmd === 'sb_get') return JSON.parse(JSON.stringify(mockBoard));
+  if (cmd === 'sb_set') { mockBoard = a.board; return; }
+  if (cmd === 'sb_pick') return ['C:\\Users\\Alex\\Downloads\\vine-boom.mp3', 'C:\\Users\\Alex\\Downloads\\bruh.mp3'];
+  if (cmd === 'sb_import') return a.paths.map((p, i) => ({ id: 'n' + Date.now().toString(16) + i, name: p.split('\\').pop().replace(/\.\w+$/, '').replace(/[-_]/g, ' '), file: 'x.mp3', vol: 100, hk: '', hk_label: '' }));
+  if (cmd === 'sb_play') { mockPlaying = [a.id]; setTimeout(() => mockPlaying = [], 1800); return; }
+  if (cmd === 'sb_stop') { mockPlaying = []; return; }
+  if (cmd === 'host_status') return { sb: { pads: mockBoard.pads.length, mic: true, playing: mockPlaying, hk_fail: ['p3'] }, running: true, bridge: true, rate: 48000, underruns: 0, mem_mb: 212, slots: mockChain.map((c, i) => ({ uid: c.uid, name: c.path.split('\\').pop().replace('.vst3', ''), vendor: ['Neverdie Audio', 'Nuro Audio'][i % 2], ok: true, enabled: c.enabled })) };
   if (cmd === 'vst_scan') return [{ name: 'Speachy', path: 'C:\\Program Files\\Common Files\\VST3\\Speachy.vst3', folder: 'VST3' }, { name: 'Xvox Pro', path: 'C:\\Program Files\\Common Files\\VST3\\Nuro Audio\\Xvox Pro.vst3', folder: 'Nuro Audio' }, { name: 'FabFilter Pro-Q 3', path: 'C:\\x\\FabFilter Pro-Q 3.vst3', folder: 'FabFilter' }];
   if (cmd === 'update_check') return { current: '0.4.0', latest: '0.4.0', available: false, notes: '', url: '', page: '' };
   if (cmd === 'monitor_start') return 'Analogue 1 + 2 (Focusrite USB Audio) → SteelSeries Sonar - Gaming';
@@ -189,7 +217,7 @@ const VIEWS = [['mic', 'Mikrofón', 'mic'], ['presets', 'Presety', 'presets'], [
 function buildNav() {
   const nav = $('#nav');
   for (const [id, label, ic] of VIEWS)
-    nav.append(h('button', { 'data-v': id, onclick: () => go(id) }, icon(ic), label, id === 'board' ? h('span', { class: 'badge' }, 'Čoskoro') : null));
+    nav.append(h('button', { 'data-v': id, onclick: () => go(id) }, icon(ic), label));
 }
 function go(id) {
   S.view = id;
@@ -201,6 +229,7 @@ function go(id) {
   $('#main').scrollTop = 0;
   if (id === 'presets') renderPresets();
   if (id === 'settings') renderSettings();
+  if (id === 'board') renderBoard();
 }
 
 // ------------------------------------------------------------------ ovládacie prvky
@@ -464,7 +493,7 @@ function renderMic() {
   const engine = segment([[0, 'Vlastné efekty'], [1, 'VST pluginy']], () => V['global.engine'], e => setEngine(e), 'engine');
 
   v.append(h('div', { class: 'toolbar' },
-    !vst ? presetSwitcher() : h('div', { class: 'pswitch vstlbl' }, icon('plug'), h('span', {}, 'Reťazec pluginov')), engine, h('div', { class: 'tspacer' }),
+    !vst ? presetSwitcher() : h('div', { class: 'pswitch vstlbl' }, icon('plug'), h('span', {}, 'Reťazec pluginov')), engine, funChip(), h('div', { class: 'tspacer' }),
     h('div', { class: 'monwrap' + (S.monitoring ? ' on' : ''), id: 'monWrap' }, monBtn, monVol), master));
 
   if (S.app && !S.app.registered) {
@@ -473,6 +502,7 @@ function renderMic() {
       h('button', { class: 'btn primary', onclick: () => go('settings') }, 'Nastaviť mikrofón')));
   }
 
+  { const ban = apoBanner(); if (ban) v.append(ban); }
   // ---- pult
   const mods = vst ? vstSlotsView() : builtinModules();
   v.append(h('div', { class: 'rack land' },
@@ -484,6 +514,15 @@ function renderMic() {
   renderDrawer();
   paintMonitorState();
   if (vst) refreshHost();
+}
+
+// aktívny hlasový efekt – viditeľný aj na hlavnej stránke, nech na neho človek nezabudne
+function funChip() {
+  const name = h('span');
+  const el = h('div', { class: 'funchip', title: 'Hlasový efekt (Soundboard)' }, icon('sparkle'), name,
+    h('button', { class: 'iconbtn', title: 'Vypnúť efekt', onclick: () => { S.values['fun.type'] = 0; scheduleSave(); repaint(); } }, icon('x')));
+  bound.push(() => { const t = S.values['fun.type']; el.hidden = !t; el.style.display = t ? '' : 'none'; name.textContent = (FUN[t] || {}).name || ''; });
+  return el;
 }
 
 function builtinModules() {
@@ -574,10 +613,7 @@ function renderDrawer() {
 async function setEngine(e) {
   S.values['global.engine'] = e;
   saveNow();
-  try {
-    if (e === 1) { await invoke('host_start'); await invoke('host_autostart', { on: true }); }
-    else { await invoke('host_stop'); await invoke('host_autostart', { on: false }); }
-  } catch (err) { toast(String(err), true); }
+  await syncHost();
   renderMic();
 }
 
@@ -821,12 +857,216 @@ async function deletePreset(name) {
   try { await invoke('delete_preset', { name }); toast(`Preset „${name}“ zmazaný`); renderPresets(); } catch (e) { toast(String(e), true); }
 }
 
-// ------------------------------------------------------------------ pohľad: Soundboard
-function renderBoard() {
-  $('#v-board').append(h('div', { class: 'head' }, h('div', {}, h('h1', {}, 'Soundboard'), h('p', {}, 'Zvuky priamo do mikrofónu.'))),
-    h('div', { class: 'card soon land' }, h('div', { class: 'big' }, icon('board')), h('h3', {}, 'Čoskoro'),
-      h('p', {}, 'Zvuky, ktoré pustíš klávesovou skratkou a počujú ich všetci v hovore – bez ďalšieho virtuálneho kábla. Úplne voliteľné.')));
+// starý efekt v mikrofóne (aktualizovala sa len appka) – soundboard a hlasové efekty potrebujú nový
+function apoOutdated() {
+  const a = S.app; if (!a?.registered || !a.apo_version || !a.version) return false;
+  return a.apo_version !== a.version.split('.').slice(0, 2).join('.');
 }
+function apoBanner() {
+  if (!apoOutdated()) return null;
+  const dev = S.app.endpoints.find(e => e.installed);
+  return h('div', { class: 'card banner land' }, h('div', { class: 'ic' }, icon('sparkle')),
+    h('div', {}, h('b', {}, 'Aktualizuj efekt na mikrofóne'),
+      h('p', {}, `V mikrofóne beží efekt z verzie ${S.app.apo_version}. Soundboard a hlasové efekty potrebujú nový – stačí ho preinštalovať (ak si to už urobil s „po reštarte“, reštartuj PC).`)),
+    dev ? h('button', { class: 'btn primary', onclick: () => doInstall(dev) }, 'Preinštalovať') : null);
+}
+
+// ------------------------------------------------------------------ pohľad: Soundboard + hlasové efekty
+const FUN = [
+  { name: 'Vypnuté', sub: 'tvoj hlas', icon: 'off' },
+  { name: 'Chipmunk', sub: 'vyšší hlas', icon: 'up' },
+  { name: 'Monštrum', sub: 'hlboký hlas', icon: 'deep' },
+  { name: 'Robot', sub: 'kovový', icon: 'robot' },
+  { name: 'Vysielačka', sub: 'policajné rádio', icon: 'radio' },
+  { name: 'Telefón', sub: 'starý mobil', icon: 'phone' },
+  { name: 'Megafón', sub: 'skreslený', icon: 'mega' },
+  { name: 'Jaskyňa', sub: 'ozvena', icon: 'cave' },
+  { name: 'Mimozemšťan', sub: 'z inej planéty', icon: 'alien' },
+];
+let B = null, sbState = { playing: [], hk_fail: [], mic: false }, boardSaveT = 0;
+const needHost = () => S.values['global.engine'] === 1 || (B?.pads.length || 0) > 0;
+async function syncHost() {
+  try {
+    if (needHost()) { await invoke('host_start'); await invoke('host_autostart', { on: true }); }
+    else { await invoke('host_stop'); await invoke('host_autostart', { on: false }); }
+  } catch (e) { toast(String(e), true); }
+}
+async function loadBoard() { try { B = await invoke('sb_get'); } catch { B = null; } if (!B) B = { mic_volume: 80, local_volume: 60, normalize: true, stop_hk: '', stop_label: '', pads: [] }; }
+function saveBoard(now = false) {
+  clearTimeout(boardSaveT);
+  const go = async () => { const had = needHost(); try { await invoke('sb_set', { board: B }); } catch (e) { toast(String(e), true); } if (needHost() !== had || now) syncHost(); };
+  now ? go() : (boardSaveT = setTimeout(go, 250));
+}
+
+// klávesová skratka: mods ako vo Windows (Alt 1, Ctrl 2, Shift 4, Win 8), vk = kód klávesy
+const KEYNAMES = { Space: 'Medzera', Pause: 'Pause', ScrollLock: 'Scroll Lock', Insert: 'Insert', Home: 'Home', End: 'End', PageUp: 'Page Up', PageDown: 'Page Down',
+  NumpadAdd: 'Num +', NumpadSubtract: 'Num −', NumpadMultiply: 'Num ×', NumpadDivide: 'Num ÷', NumpadDecimal: 'Num ,', NumpadEnter: 'Num Enter',
+  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\' };
+function keyLabel(e) {
+  const c = e.code;
+  if (/^Key[A-Z]$/.test(c)) return c.slice(3);
+  if (/^Digit\d$/.test(c)) return c.slice(5);
+  if (/^Numpad\d$/.test(c)) return 'Num ' + c.slice(6);
+  if (/^F\d+$/.test(c)) return c;
+  return KEYNAMES[c] || e.key.toUpperCase();
+}
+function captureHotkey(title, cur, onSet) {
+  const show = h('div', { class: 'hkshow' }, cur || 'Stlač kombináciu…');
+  const warn = h('p', { class: 'hkwarn' });
+  const box = h('div', { class: 'hkcap' }, h('h3', {}, title),
+    h('p', {}, 'Stlač kláves alebo kombináciu (napr. Num 1, F9, Ctrl+Alt+1). Funguje aj v hre. Backspace = zrušiť skratku.'), show, warn);
+  let res = null;
+  const onKey = e => {
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'Escape') return m.close(), cleanup();
+    if ((e.key === 'Backspace' || e.key === 'Delete') && !e.ctrlKey && !e.altKey) { res = { hk: '', label: '' }; show.textContent = 'Bez skratky'; warn.textContent = ''; return; }
+    if (['Control', 'Shift', 'Alt', 'Meta', 'AltGraph'].includes(e.key)) return;
+    const mods = (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.shiftKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+    const k = keyLabel(e);
+    const label = [e.ctrlKey && 'Ctrl', e.altKey && 'Alt', e.shiftKey && 'Shift', e.metaKey && 'Win', k].filter(Boolean).join('+');
+    show.textContent = label;
+    const plain = !(mods & 3) && !(mods & 8) && /^(Key[A-Z]|Digit\d|Space|Enter|Tab)$/.test(e.code);
+    if (plain) { warn.textContent = 'Toto by ti zablokovalo písanie. Pridaj Ctrl alebo Alt, alebo použi numerickú klávesnicu či F-klávesy.'; res = null; return; }
+    warn.textContent = '';
+    res = { hk: `${mods},${e.keyCode}`, label };
+  };
+  const cleanup = () => window.removeEventListener('keydown', onKey, true);
+  window.addEventListener('keydown', onKey, true);
+  const m = modal(box, [['Zrušiť', () => { m.close(); cleanup(); }], ['Uložiť', () => { if (res) onSet(res); m.close(); cleanup(); }, 'primary']]);
+}
+
+async function addSounds(paths) {
+  if (!paths) { try { paths = await invoke('sb_pick'); } catch (e) { return toast(String(e), true); } }
+  if (!paths?.length) return;
+  try {
+    const pads = await invoke('sb_import', { paths });
+    if (!pads.length) return;
+    B.pads.push(...pads);
+    saveBoard(true);
+    toast(pads.length === 1 ? `Pridaný zvuk „${pads[0].name}“` : `Pridaných ${pads.length} zvukov`);
+    if (S.view === 'board') renderBoard(true);
+  } catch (e) { toast(String(e), true); }
+}
+
+function funPanel() {
+  const V = S.values;
+  const tiles = h('div', { class: 'funs' });
+  FUN.forEach((f, i) => {
+    const t = h('button', { class: 'fun', 'aria-pressed': 'false', onclick: () => { V['fun.type'] = i; scheduleSave(); repaint(); } },
+      h('span', { class: 'fic' }, icon(f.icon)), h('b', {}, f.name), h('small', {}, f.sub));
+    bound.push(() => { const on = V['fun.type'] === i; t.classList.toggle('on', on); t.setAttribute('aria-pressed', on); });
+    tiles.append(t);
+  });
+  const knobs = h('div', { class: 'funknobs' },
+    knob({ key: 'fun.amount', min: 0, max: 100, step: 1, size: 64, small: true, label: 'Intenzita', fmt: pct, def: 50 }),
+    knob({ key: 'fun.mix', min: 0, max: 100, step: 1, size: 64, small: true, label: 'Mix s hlasom', fmt: pct, def: 100 }));
+  bound.push(() => knobs.classList.toggle('dis', !V['fun.type']));
+  repaint();
+  return h('section', { class: 'card sbsec land', style: '--i:0' },
+    h('div', { class: 'sbh' }, h('div', {}, h('h2', {}, 'Hlasové efekty'), h('p', {}, 'Zmení tvoj hlas pre všetkých v hovore. Ide aj s VST pluginmi.'))),
+    h('div', { class: 'funwrap' }, tiles, knobs));
+}
+
+function padCard(p, i) {
+  const playing = sbState.playing?.includes(p.id);
+  const fail = sbState.hk_fail?.includes(p.id);
+  const vol = h('input', { type: 'range', min: 0, max: 150, step: 5, value: p.vol, 'aria-label': 'Hlasitosť zvuku', class: 'padvol' });
+  vol.style.setProperty('--p', p.vol / 1.5 + '%');
+  vol.addEventListener('input', () => { p.vol = +vol.value; vol.style.setProperty('--p', p.vol / 1.5 + '%'); volTxt.textContent = p.vol + ' %'; saveBoard(); });
+  const volTxt = h('span', { class: 'pvt' }, p.vol + ' %');
+  const hk = h('button', { class: 'hkchip' + (p.hk ? '' : ' empty') + (fail ? ' fail' : ''), title: fail ? 'Túto skratku už používa iná appka – zvoľ inú' : 'Nastaviť klávesovú skratku',
+    onclick: e => { e.stopPropagation(); captureHotkey(`Skratka pre „${p.name}“`, p.hk_label, r => { p.hk = r.hk; p.hk_label = r.label; saveBoard(true); renderBoard(true); }); } },
+    icon(fail ? 'warn' : 'key'), p.hk_label || 'Skratka');
+  const play = h('button', { class: 'padplay', 'aria-label': 'Prehrať ' + p.name, onclick: () => playPad(p.id) },
+    h('span', { class: 'pbig' }, icon(playing ? 'stop' : 'play')), h('span', { class: 'eq' }, h('i'), h('i'), h('i'), h('i')));
+  const name = h('b', { class: 'padname', title: 'Dvojklik = premenovať', ondblclick: () => renamePad(p) }, p.name);
+  return h('div', { class: 'pad card land' + (playing ? ' playing' : ''), style: `--i:${i}`, 'data-id': p.id },
+    play,
+    h('div', { class: 'pmeta' }, name,
+      h('div', { class: 'prow' }, hk,
+        h('div', { class: 'pmenu' },
+          h('button', { class: 'iconbtn', title: 'Premenovať', onclick: () => renamePad(p) }, icon('edit')),
+          h('button', { class: 'iconbtn', title: 'Odstrániť', onclick: () => { B.pads = B.pads.filter(x => x !== p); saveBoard(true); renderBoard(true); } }, icon('trash'))))),
+    h('div', { class: 'pvol' }, vol, volTxt));
+}
+async function playPad(id) {
+  try {
+    if (sbState.playing?.includes(id)) await invoke('sb_stop'); else await invoke('sb_play', { id });
+  } catch (e) { toast(String(e), true); }
+  setTimeout(pollBoard, 120);
+}
+function renamePad(p) {
+  const inp = h('input', { class: 'txt', value: p.name, maxlength: 40 });
+  const ok = () => { const n = inp.value.trim(); if (n) { p.name = n; saveBoard(true); renderBoard(true); } m.close(); };
+  inp.addEventListener('keydown', e => e.key === 'Enter' && ok());
+  const m = modal(h('div', {}, h('h3', {}, 'Premenovať zvuk'), inp), [['Zrušiť', null], ['Uložiť', ok, 'primary']]);
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+}
+
+function boardSettings() {
+  const rng = (label, key, max, hint) => {
+    const inp = h('input', { type: 'range', min: 0, max, step: 5, value: B[key], 'aria-label': label });
+    const v = h('span', { class: 'v' }, B[key] + ' %');
+    const paint = () => inp.style.setProperty('--p', B[key] / max * 100 + '%'); paint();
+    inp.addEventListener('input', () => { B[key] = +inp.value; v.textContent = B[key] + ' %'; paint(); saveBoard(); });
+    return h('div', { class: 'field', title: hint }, h('label', {}, label), h('div', { class: 'rng' }, inp), v);
+  };
+  const norm = h('button', { class: 'sw' + (B.normalize ? ' on' : ''), role: 'switch', 'aria-label': 'Vyrovnať hlasitosť',
+    onclick: () => { B.normalize = !B.normalize; norm.classList.toggle('on', B.normalize); saveBoard(); } });
+  const stopFail = sbState.hk_fail?.includes('stop');
+  const stopHk = h('button', { class: 'hkchip' + (B.stop_hk ? '' : ' empty') + (stopFail ? ' fail' : ''),
+    onclick: () => captureHotkey('Skratka „Stop všetko“', B.stop_label, r => { B.stop_hk = r.hk; B.stop_label = r.label; saveBoard(true); renderBoard(true); }) },
+    icon(stopFail ? 'warn' : 'key'), B.stop_label || 'Nastaviť');
+  return h('section', { class: 'card sbset land', style: '--i:2' },
+    rng('Do mikrofónu', 'mic_volume', 150, 'Ako nahlas zvuky počujú ostatní'),
+    rng('V slúchadlách', 'local_volume', 150, 'Ako nahlas ich počuješ ty (0 = vôbec)'),
+    h('div', { class: 'field sw-f' }, h('label', {}, 'Vyrovnať hlasitosť'), h('div', { class: 'swrow' }, norm, h('small', {}, 'tiché aj hlasné zvuky budú rovnako silné')), h('span')),
+    h('div', { class: 'field sw-f' }, h('label', {}, 'Stop všetko'), h('div', { class: 'swrow' }, stopHk), h('span')));
+}
+
+async function renderBoard(keep) {
+  const v = $('#v-board');
+  if (!B || !keep) await loadBoard();
+  const mark = bound.length;
+  if (v._own) { for (const f of v._own) { const k = bound.indexOf(f); if (k >= 0) bound.splice(k, 1); } }
+  const st = $('#v-board').scrollTop;
+  v.innerHTML = '';
+  v.append(h('div', { class: 'head' },
+    h('div', {}, h('h1', {}, 'Soundboard'), h('p', {}, 'Zvuky a efekty priamo do mikrofónu – počujú ich všetci v hovore, bez virtuálnych káblov.')),
+    h('div', { class: 'actions' },
+      h('button', { class: 'btn', onclick: async () => { try { await invoke('sb_stop'); } catch { } setTimeout(pollBoard, 120); } }, icon('stop'), 'Stop všetko'),
+      h('button', { class: 'btn primary', onclick: () => addSounds() }, icon('plus'), 'Pridať zvuky'))));
+  const ban = apoBanner(); if (ban) v.append(ban);
+  v.append(funPanel());
+
+  const grid = h('div', { class: 'pads' });
+  B.pads.forEach((p, i) => grid.append(padCard(p, i)));
+  grid.append(h('button', { class: 'pad add land', style: `--i:${B.pads.length}`, onclick: () => addSounds() },
+    h('span', { class: 'addic' }, icon('drop')), h('b', {}, 'Pridať zvuky'), h('small', {}, 'MP3, WAV, FLAC – alebo ich sem pretiahni')));
+  const micNote = !B.pads.length ? '' : sbState.mic ? 'Mikrofón beží – zvuky idú do hovoru.' : 'Do hovoru idú, keď mikrofón práve niečo používa (Discord, hra…). Inak ich počuješ len ty.';
+  v.append(h('section', { class: 'card sbsec land', style: '--i:1' },
+    h('div', { class: 'sbh' }, h('div', {}, h('h2', {}, 'Zvuky'), h('p', { id: 'sbNote' }, micNote || 'Pridaj zvuky a nastav im skratky – pustíš ich aj počas hry.'))),
+    grid));
+  v.append(boardSettings());
+  v._own = bound.slice(mark);
+  v.scrollTop = st;
+}
+async function pollBoard() {
+  if (S.view !== 'board' || document.hidden || !B?.pads.length) return;
+  let hs = {};
+  try { hs = await invoke('host_status') || {}; } catch { }
+  const sb = hs.sb || { playing: [], hk_fail: [], mic: false };
+  const changedFail = JSON.stringify(sb.hk_fail || []) !== JSON.stringify(sbState.hk_fail || []) || !!sb.mic !== !!sbState.mic;
+  sbState = sb;
+  if (changedFail) return renderBoard(true);
+  document.querySelectorAll('.pad[data-id]').forEach(el => {
+    const on = sb.playing?.includes(el.dataset.id);
+    if (el.classList.contains('playing') === !!on) return;
+    el.classList.toggle('playing', !!on);
+    const ic = el.querySelector('.pbig'); ic.innerHTML = ''; ic.append(icon(on ? 'stop' : 'play'));
+  });
+}
+setInterval(pollBoard, 500);
 
 // ------------------------------------------------------------------ pohľad: Nastavenia
 async function renderSettings() {
@@ -1025,8 +1265,9 @@ async function refreshAll() {
       saveNow();
     }
   } catch { }
-  // VST režim: host musí bežať (napr. po aktualizácii alebo keď ho niekto zavrel)
-  if (S.values['global.engine'] === 1) { try { await invoke('host_start'); } catch { } }
+  // host musí bežať vo VST režime alebo keď sú v soundboarde zvuky (napr. po aktualizácii)
+  if (!B) await loadBoard();
+  if (needHost()) { try { await invoke('host_start'); await invoke('host_autostart', { on: true }); } catch { } }
   renderMic();
   if (S.view === 'settings') renderSettings();
   if (S.view === 'presets') renderPresets();
@@ -1034,7 +1275,7 @@ async function refreshAll() {
 }
 
 document.addEventListener('keydown', e => {
-  if (e.target.closest('input.txt')) return;
+  if (e.target.closest('input.txt') || document.querySelector('.hkcap')) return;
   if (e.key === 'b' || e.key === 'B') toggleBypass();
 });
 
@@ -1042,13 +1283,13 @@ setInterval(() => { if (S.view === 'mic' && S.values['global.engine'] === 1 && !
 
 async function start() {
   buildNav();
-  renderBoard();
   if (IS_APP) {
     const w = TAURI.window.getCurrentWindow();
     $('#wMin').onclick = () => w.minimize();
     $('#wMax').onclick = () => w.toggleMaximize();
     $('#wClose').onclick = () => w.close();
     TAURI.event.listen('meter', e => onMeter(e.payload));
+    TAURI.event.listen('tauri://drag-drop', e => { const p = e.payload?.paths || []; if (p.length) { go('board'); addSounds(p); } });
     const vis = () => { const on = !document.hidden; invoke('set_meter_active', { on }); document.body.classList.toggle('idle', !on); };
     document.addEventListener('visibilitychange', vis);
   } else {

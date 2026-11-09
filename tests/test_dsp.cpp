@@ -6,6 +6,8 @@
 #include <random>
 #include <vector>
 #include "hmo/dsp.h"
+#include "hmo/voicefx.h"
+#include "hmo/sfx.h"
 
 using namespace hmo;
 static int failures = 0;
@@ -132,6 +134,60 @@ int main() {
         double el = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         std::printf("info: %d s audia spracovanych za %.3f s => %.2f %% jedneho jadra, latencia %.1f ms\n",
                     secs, el, 100.0 * el / secs, 1000.0 * c.latencySamples() / fs);
+    }
+
+    // VoiceFx: posun výšky – energia na očakávanej frekvencii (Goertzel)
+    {
+        auto ratioOk = [&](float ratio) {
+            PitchShifter ps; ps.prepare(fs); ps.setRatio(ratio);
+            std::vector<float> o(48000);
+            for (int i = 0; i < 48000; ++i) o[i] = ps.process(0.5f * std::sin(2 * kPi * 200 * i / fs));
+            auto pw = [&](float f) { double c = 2 * std::cos(2 * kPi * f / fs), s0 = 0, s1 = 0, s2 = 0;
+                for (int i = 9600; i < 48000; ++i) { s0 = o[i] + c * s1 - s2; s2 = s1; s1 = s0; } return s1 * s1 + s2 * s2 - c * s1 * s2; };
+            return pw(200 * ratio) / (pw(200) + 1e-9);
+        };
+        double up = ratioOk(1.5f), dn = ratioOk(0.6f);
+        CHECK(up > 10, "pitch shift x1.5: 200 -> 300 Hz (pomer energie %.1f)", up);
+        CHECK(dn > 10, "pitch shift x0.6: 200 -> 120 Hz (pomer energie %.1f)", dn);
+    }
+    // VoiceFx: všetky efekty stabilné a ohraničené
+    {
+        std::mt19937 rng(7); std::normal_distribution<float> nd(0, 0.3f);
+        for (int t = 1; t < (int)FunType::Count; ++t) for (float am : {0.0f, 50.0f, 100.0f}) {
+            Params p; p.funType = t; p.funAmount = am; p.funMix = 100;
+            VoiceFx fx; fx.prepare(fs); fx.setParams(p);
+            float mx = 0; bool fin = true; double e = 0;
+            for (int i = 0; i < 96000; ++i) {
+                float x = (i / 4800) % 2 ? nd(rng) : 0.8f * std::sin(2 * kPi * 180 * i / fs);
+                float y = fx.process(x);
+                fin = fin && std::isfinite(y); mx = std::max(mx, std::fabs(y)); e += (double)y * y;
+            }
+            CHECK(fin && mx < 4.0f && e > 1.0, "fun efekt %d (%.0f %%) stabilny, max %.2f, energia %.0f", t, am, mx, e);
+        }
+        Params p; p.funType = 3; p.funMix = 0; VoiceFx fx; fx.prepare(fs); fx.setParams(p);
+        float d = 0; for (int i = 0; i < 1000; ++i) { float x = std::sin(i * 0.05f); d = std::max(d, std::fabs(fx.process(x) - x)); }
+        CHECK(d < 1e-6, "fun mix 0 %% = bez zmeny");
+    }
+    // Soundboard most: zápis hosta -> mix v APO, každá vzorka práve raz
+    {
+        static SfxShared sh; sfxInit(&sh);
+        sh.sampleRate.store(48000);
+        std::vector<float> blk(480, 0.0f);
+        sfxMix(&sh, blk.data(), 480);
+        bool silent = std::all_of(blk.begin(), blk.end(), [](float v) { return v == 0; });
+        CHECK(silent && sh.readPos.load() == 480, "sfx: bez zvuku ticho a posun citania");
+        SfxWriter wr; std::vector<float> snd(2000, 0.25f);
+        size_t src = 0;
+        auto gen = [&](float* d, int n) { if (src >= snd.size()) return false; int k = 0; for (; k < n && src < snd.size(); ++k) d[k] = snd[src++]; for (int j = k; j < n; ++j) d[j] = 0; return true; };
+        int w = wr.fill(&sh, gen);
+        CHECK(w > 0 && sh.writePos.load() > sh.readPos.load(), "sfx: host zapisal %d vzoriek dopredu", w);
+        double sum = 0;
+        for (int b = 0; b < 20; ++b) {
+            std::fill(blk.begin(), blk.end(), 0.0f); sfxMix(&sh, blk.data(), 480);
+            for (float v : blk) sum += v;
+            wr.fill(&sh, gen);
+        }
+        CHECK(std::fabs(sum - 2000 * 0.25) < 1e-3, "sfx: cely zvuk presiel prave raz (sucet %.2f)", sum);
     }
 
     std::printf(failures ? "\n%d test(ov) zlyhalo\n" : "\nvsetko ok\n", failures);
