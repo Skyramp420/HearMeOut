@@ -392,6 +392,9 @@ static LRESULT CALLBACK MsgProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         if (wp == 2) { for (auto& s : g_slots) if (s->plug && s->plug->dirty) saveState(*s); writeStatus(); }
         if (wp == 3) { KillTimer(h, 3); trimMemory(); }
         return 0;
+    case WM_CLOSE:          // taskkill / inštalátor: ukonči slušne (uloží stavy pluginov)
+        PostQuitMessage(0);
+        return 0;
     case WM_ENDSESSION:
         for (auto& s : g_slots) saveState(*s);
         return 0;

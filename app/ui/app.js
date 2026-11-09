@@ -157,6 +157,7 @@ const invoke = IS_APP ? TAURI.core.invoke : async (cmd, a) => {
   if (cmd === 'delete_preset') { mockPresets = mockPresets.filter(p => p.name !== a.name); return; }
   if (cmd === 'vst_chain_get') return mockChain;
   if (cmd === 'vst_chain_set') { mockChain = a.slots; return; }
+  if (cmd === 'host_start') return;
   if (cmd === 'host_status') return { running: true, bridge: true, rate: 48000, underruns: 0, mem_mb: 212, slots: mockChain.map((c, i) => ({ uid: c.uid, name: c.path.split('\\').pop().replace('.vst3', ''), vendor: ['Neverdie Audio', 'Nuro Audio'][i % 2], ok: true, enabled: c.enabled })) };
   if (cmd === 'vst_scan') return [{ name: 'Speachy', path: 'C:\\Program Files\\Common Files\\VST3\\Speachy.vst3', folder: 'VST3' }, { name: 'Xvox Pro', path: 'C:\\Program Files\\Common Files\\VST3\\Nuro Audio\\Xvox Pro.vst3', folder: 'Nuro Audio' }, { name: 'FabFilter Pro-Q 3', path: 'C:\\x\\FabFilter Pro-Q 3.vst3', folder: 'FabFilter' }];
   if (cmd === 'update_check') return { current: '0.4.0', latest: '0.4.0', available: false, notes: '', url: '', page: '' };
@@ -1024,6 +1025,8 @@ async function refreshAll() {
       saveNow();
     }
   } catch { }
+  // VST režim: host musí bežať (napr. po aktualizácii alebo keď ho niekto zavrel)
+  if (S.values['global.engine'] === 1) { try { await invoke('host_start'); } catch { } }
   renderMic();
   if (S.view === 'settings') renderSettings();
   if (S.view === 'presets') renderPresets();

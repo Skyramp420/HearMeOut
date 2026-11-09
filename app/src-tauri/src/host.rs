@@ -120,6 +120,8 @@ pub fn host_start() -> Result<(), String> {
 #[tauri::command]
 pub fn host_stop() { let _ = send("quit"); }
 
+pub fn host_running() -> bool { find_window().is_some() }
+
 #[tauri::command]
 pub fn host_open_editor(uid: String) -> Result<(), String> {
     host_start()?;

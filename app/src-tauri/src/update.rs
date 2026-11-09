@@ -67,6 +67,9 @@ pub async fn update_install(url: String, app: tauri::AppHandle) -> Result<(), St
         std::io::copy(&mut resp.into_reader(), &mut out).map_err(|e| format!("Sťahovanie zlyhalo: {e}"))?;
         Ok(file)
     }).await.map_err(|e| e.to_string())??;
+    // host drží svoj .exe otvorený – ukonči ho slušne (uloží stavy pluginov), inštalátor ho potom spustí znova
+    crate::host::host_stop();
+    for _ in 0..30 { if !crate::host::host_running() { break; } std::thread::sleep(std::time::Duration::from_millis(100)); }
     // /P = inštalácia bez otázok, len s priebehom
     std::process::Command::new(&path).arg("/P").spawn().map_err(|e| format!("Inštalátor sa nespustil: {e}"))?;
     app.exit(0);

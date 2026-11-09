@@ -1,7 +1,9 @@
 {
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": [
+      "nsis"
+    ],
     "publisher": "WheresTheApp",
     "shortDescription": "Efekty na mikrofón priamo vo Windows",
     "resources": {
@@ -10,7 +12,8 @@
     },
     "windows": {
       "nsis": {
-        "installMode": "currentUser"
+        "installMode": "currentUser",
+        "installerHooks": "./installer-hooks.nsh"
       }
     }
   }
