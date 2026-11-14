@@ -290,7 +290,7 @@ public:
         chain_.prepare((float)rate_);
         fun_.prepare((float)rate_); fun_.setParams(params_.front());
         locked_ = true;
-        bridgeLat_ = (uint32_t)std::min(2048.0, std::ceil(0.020 * rate_));   // 20 ms
+        bridgeLat_ = latFor(params_.front());
         std::fill(dry_.begin(), dry_.end(), 0.0f); dryPos_ = 0;
         g_statusOwner.store(this);   // status hlási inštancia, ktorá reálne spracúva zvuk
         if (auto* m = meter()) {
@@ -414,6 +414,8 @@ public:
         if (hb != lastHostBeat_) { lastHostBeat_ = hb; staleBlocks_ = 0; } else if (staleBlocks_ < 1000) ++staleBlocks_;
         const bool alive = b->hostActive.load(std::memory_order_acquire) == 1 && staleBlocks_ < 40;
 
+        const uint32_t lat = latFor(p);
+        if (lat != bridgeLat_) { bridgeLat_ = lat; wetMix_ = 0; }   // zmena v appke (Stabilita)
         const int64_t w = b->inWrite.load(std::memory_order_relaxed);
         const float g = inGain(p);
         for (UINT32 i = 0; i < m; ++i) b->inBuf[(w + i) & (hmo::kBridgeCap - 1)] = mono_[i] * g;
@@ -429,12 +431,20 @@ public:
         for (UINT32 i = 0; i < m; ++i) {
             const int64_t pos = start + i;
             float y;
-            if (pos >= os && pos < ow && ow - pos < (int64_t)hmo::kBridgeCap / 2) y = b->outBuf[pos & (hmo::kBridgeCap - 1)];
-            else { y = dry_[(dryStart + i - bridgeLat_) & (kDryCap - 1)]; under = true; }
+            const float dry = dry_[(dryStart + i - bridgeLat_) & (kDryCap - 1)];
+            if (pos >= os && pos < ow && ow - pos < (int64_t)hmo::kBridgeCap / 2) {
+                // po výpadku sa k pluginom vráť plynulo (bez kliknutia)
+                wetMix_ = std::min(1.0f, wetMix_ + 1.0f / 96.0f);
+                y = wetMix_ >= 1.0f ? b->outBuf[pos & (hmo::kBridgeCap - 1)] : wetMix_ * b->outBuf[pos & (hmo::kBridgeCap - 1)] + (1.0f - wetMix_) * dry;
+            } else { y = dry; wetMix_ = 0; under = true; }
             wet_[i] = std::max(-1.0f, std::min(1.0f, y * og));
         }
         if (under) b->underruns.fetch_add(1, std::memory_order_relaxed);
         return true;
+    }
+    uint32_t latFor(const hmo::Params& p) const {
+        const int ms = std::max(10, std::min(150, p.bridgeMs));
+        return (uint32_t)std::ceil(ms * 0.001 * (rate_ > 0 ? rate_ : 48000));
     }
     static float softClip(float x) {
         const float a = std::fabs(x);
@@ -551,10 +561,11 @@ private:
     std::atomic<unsigned long long> blocks_{0};
     float lvlIn_ = 0, lvlOut_ = 0;
     static constexpr UINT32 kMaxBlock = 2048;
-    static constexpr size_t kDryCap = 8192;          // mocnina 2, > max latencia + blok
+    static constexpr size_t kDryCap = 16384;         // mocnina 2, > max latencia (150 ms) + blok
     std::vector<float> mono_, wet_, dry_;
     size_t dryPos_ = 0;
-    uint32_t bridgeLat_ = 960, lastHostBeat_ = 0, staleBlocks_ = 1000;
+    float wetMix_ = 1.0f;
+    uint32_t bridgeLat_ = 1920, lastHostBeat_ = 0, staleBlocks_ = 1000;
     int engineState_ = 0;
 };
 

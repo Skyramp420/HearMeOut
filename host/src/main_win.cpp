@@ -126,6 +126,32 @@ static FILETIME g_cfgStamp{};
 
 // vráť systému pamäť, ktorú pluginy potrebovali len pri načítaní / pri otvorenom okne
 static void trimMemory() { SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1); }
+// výpadky za poslednú minútu (celkový súčet od štartu nič nehovorí)
+static uint32_t g_underHist[60]; static int g_underIdx = 0; static bool g_underFull = false;
+static uint32_t underrunsLastMinute() {
+    const uint32_t now = g_underruns.load();
+    const uint32_t old = g_underFull ? g_underHist[g_underIdx] : (g_underIdx ? g_underHist[0] : now);
+    g_underHist[g_underIdx] = now; g_underIdx = (g_underIdx + 1) % 60; if (!g_underIdx) g_underFull = true;
+    return now - old;
+}
+static std::atomic<uint32_t> g_underMin{0};
+
+// Windows 11 brzdí procesy bez okna (EcoQoS, E-jadrá) – host je audio, nesmie byť brzdený
+static void noThrottling() {
+    struct PPT { ULONG Version, ControlMask, StateMask; };
+    using SetPI = BOOL(WINAPI*)(HANDLE, int, LPVOID, DWORD);
+    using SetTI = BOOL(WINAPI*)(HANDLE, int, LPVOID, DWORD);
+    HMODULE k = GetModuleHandleW(L"kernel32.dll");
+    if (auto f = (SetPI)GetProcAddress(k, "SetProcessInformation")) {
+        PPT s{ 1, 0x1 /*EXECUTION_SPEED*/ | 0x4 /*IGNORE_TIMER_RESOLUTION*/, 0 };
+        f(GetCurrentProcess(), 4 /*ProcessPowerThrottling*/, &s, sizeof(s));
+    }
+    if (auto f = (SetTI)GetProcAddress(k, "SetThreadInformation")) {
+        PPT s{ 1, 0x1, 0 };
+        f(GetCurrentThread(), 3 /*ThreadPowerThrottling*/, &s, sizeof(s));
+    }
+}
+
 static unsigned memMb() {
     PROCESS_MEMORY_COUNTERS_EX pm{}; pm.cb = sizeof(pm);
     if (!GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pm, sizeof(pm))) return 0;
@@ -227,7 +253,7 @@ static void writeStatus() {
     std::ostringstream o;
     o << "{\"pid\":" << GetCurrentProcessId() << ",\"bridge\":" << (g_bridgeOk ? "true" : "false")
       << ",\"vst\":" << (g_vstWanted ? "true" : "false") << ",\"sb\":" << sb::statusJson()
-      << ",\"rate\":" << g_bridgeRate.load() << ",\"underruns\":" << g_underruns.load() << ",\"mem_mb\":" << memMb() << ",\"slots\":[";
+      << ",\"rate\":" << g_bridgeRate.load() << ",\"underruns\":" << g_underruns.load() << ",\"underruns_min\":" << g_underMin.load() << ",\"mem_mb\":" << memMb() << ",\"slots\":[";
     bool first = true;
     for (auto& s : g_slots) {
         if (!first) o << ","; first = false;
@@ -341,7 +367,9 @@ static void openEditor(Slot& s) {
 // ======================================================================= audio vlákno
 static void audioThread() {
     DWORD task = 0;
+    noThrottling();
     HANDLE av = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task);
+    if (av) AvSetMmThreadPriority(av, AVRT_PRIORITY_CRITICAL);
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
     hmo::BridgeShared* b = nullptr;
     HANDLE ev = nullptr, map = nullptr;
@@ -430,7 +458,7 @@ static LRESULT CALLBACK MsgProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         return 0;
     case WM_TIMER:
         if (wp == 1) { checkEngine(); checkChainFile(false); }
-        if (wp == 2) { for (auto& s : g_slots) if (s->plug && s->plug->dirty) saveState(*s); writeStatus(); }
+        if (wp == 2) { g_underMin = underrunsLastMinute(); for (auto& s : g_slots) if (s->plug && s->plug->dirty) saveState(*s); writeStatus(); }
         if (wp == 3) { KillTimer(h, 3); trimMemory(); }
         return 0;
     case WM_CLOSE:          // taskkill / inštalátor: ukonči slušne (uloží stavy pluginov)
@@ -449,6 +477,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     using DpiFn = BOOL(WINAPI*)(HANDLE);
     if (auto f = (DpiFn)GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetProcessDpiAwarenessContext")) f((HANDLE)-4 /*PER_MONITOR_AWARE_V2*/);
     OleInitialize(nullptr);
+    noThrottling();
+    SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
     g_dir = appDir();
     logLine("HearMeOutHost štart");
 

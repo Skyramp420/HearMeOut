@@ -11,6 +11,7 @@ struct Params {
     int   inputChannel   = 0;      // -1 = priemer všetkých kanálov, inak index kanála s mikrofónom
     float inputGainDb    = 0.0f;
     float outputGainDb   = 0.0f;
+    int   bridgeMs       = 40;     // VST: koľko času má host na spracovanie (viac = stabilnejšie, väčšie oneskorenie)
 
     // high-pass (odstráni dunenie, hukot, nárazy do stola)
     bool  hpEnabled      = true;

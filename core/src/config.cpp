@@ -32,6 +32,7 @@ Params parseConfig(const std::string& text, const Params& base) {
         {"global.input_channel", nullptr, nullptr, &p.inputChannel},
         {"global.input_gain_db", &p.inputGainDb},
         {"global.output_gain_db", &p.outputGainDb},
+        {"global.bridge_ms", nullptr, nullptr, &p.bridgeMs},
 
         {"highpass.enabled", nullptr, &p.hpEnabled},
         {"highpass.freq", &p.hpFreq},

@@ -67,7 +67,7 @@ const icon = (n, cls = 'i') => { const s = document.createElementNS('http://www.
 
 // ------------------------------------------------------------------ schéma (zhodná s APO) + makrá appky [ui]
 const SCHEMA = {
-  'global.bypass': [0, 'bool'], 'global.engine': [0, 'int'], 'global.input_channel': [0, 'int'], 'global.input_gain_db': [0], 'global.output_gain_db': [0],
+  'global.bypass': [0, 'bool'], 'global.engine': [0, 'int'], 'global.input_channel': [0, 'int'], 'global.input_gain_db': [0], 'global.output_gain_db': [0], 'global.bridge_ms': [40, 'int'],
   'highpass.enabled': [1, 'bool'], 'highpass.freq': [90],
   'denoise.enabled': [1, 'bool'], 'denoise.reduction_db': [24], 'denoise.strength': [1.8],
   'gate.enabled': [1, 'bool'], 'gate.threshold_db': [-50], 'gate.ratio': [2.5], 'gate.range_db': [16],
@@ -86,7 +86,7 @@ const SCHEMA = {
   'ui.tone_char': [4, 'int'], 'ui.sib': [55, 'int'],
 };
 // nastavenia viazané na mikrofón/miestnosť – presety ich nemenia
-const DEVICE_KEYS = ['global.bypass', 'global.engine', 'global.input_channel', 'global.input_gain_db', 'gate.threshold_db', 'fun.type', 'fun.amount', 'fun.mix'];
+const DEVICE_KEYS = ['global.bypass', 'global.engine', 'global.input_channel', 'global.input_gain_db', 'gate.threshold_db', 'global.bridge_ms', 'fun.type', 'fun.amount', 'fun.mix'];
 const defaults = () => Object.fromEntries(Object.entries(SCHEMA).map(([k, [d]]) => [k, d]));
 
 function fromIni(map) {
@@ -186,7 +186,7 @@ const invoke = IS_APP ? TAURI.core.invoke : async (cmd, a) => {
   if (cmd === 'sb_import') return a.paths.map((p, i) => ({ id: 'n' + Date.now().toString(16) + i, name: p.split('\\').pop().replace(/\.\w+$/, '').replace(/[-_]/g, ' '), file: 'x.mp3', vol: 100, hk: '', hk_label: '' }));
   if (cmd === 'sb_play') { mockPlaying = [a.id]; setTimeout(() => mockPlaying = [], 1800); return; }
   if (cmd === 'sb_stop') { mockPlaying = []; return; }
-  if (cmd === 'host_status') return { sb: { pads: mockBoard.pads.length, mic: true, playing: mockPlaying, hk_fail: ['p3'] }, running: true, bridge: true, rate: 48000, underruns: 0, mem_mb: 212, slots: mockChain.map((c, i) => ({ uid: c.uid, name: c.path.split('\\').pop().replace('.vst3', ''), vendor: ['Neverdie Audio', 'Nuro Audio'][i % 2], ok: true, enabled: c.enabled })) };
+  if (cmd === 'host_status') return { sb: { pads: mockBoard.pads.length, mic: true, playing: mockPlaying, hk_fail: ['p3'] }, running: true, bridge: true, rate: 48000, underruns: 0, mem_mb: 10, underruns_min: 3, slots: mockChain.map((c, i) => ({ uid: c.uid, name: c.path.split('\\').pop().replace('.vst3', ''), vendor: ['Neverdie Audio', 'Nuro Audio'][i % 2], ok: true, enabled: c.enabled })) };
   if (cmd === 'vst_scan') return [{ name: 'Speachy', path: 'C:\\Program Files\\Common Files\\VST3\\Speachy.vst3', folder: 'VST3' }, { name: 'Xvox Pro', path: 'C:\\Program Files\\Common Files\\VST3\\Nuro Audio\\Xvox Pro.vst3', folder: 'Nuro Audio' }, { name: 'FabFilter Pro-Q 3', path: 'C:\\x\\FabFilter Pro-Q 3.vst3', folder: 'FabFilter' }];
   if (cmd === 'update_check') return { current: '0.4.0', latest: '0.4.0', available: false, notes: '', url: '', page: '' };
   if (cmd === 'monitor_start') return 'Analogue 1 + 2 (Focusrite USB Audio) → SteelSeries Sonar - Gaming';
@@ -521,7 +521,8 @@ function funChip() {
   const name = h('span');
   const el = h('div', { class: 'funchip', title: 'Hlasový efekt (Soundboard)' }, icon('sparkle'), name,
     h('button', { class: 'iconbtn', title: 'Vypnúť efekt', onclick: () => { S.values['fun.type'] = 0; scheduleSave(); repaint(); } }, icon('x')));
-  bound.push(() => { const t = S.values['fun.type']; el.hidden = !t; el.style.display = t ? '' : 'none'; name.textContent = (FUN[t] || {}).name || ''; });
+  const paint = () => { const t = S.values['fun.type']; el.style.display = t ? '' : 'none'; name.textContent = (FUN[t] || {}).name || ''; };
+  bound.push(paint); paint();
   return el;
 }
 
@@ -625,7 +626,11 @@ async function refreshHost() {
 }
 function slotInfo(uid) { return (hostState.slots || []).find(s => s.uid === uid) || {}; }
 function vstSlotsView() {
-  return h('div', { class: 'vstwrap' }, h('div', { class: 'hostbar', id: 'hostBar' }), h('div', { class: 'slots', id: 'slots' }), h('div', { class: 'vsttip', id: 'vstTip' }));
+  const stab = segment([[20, 'Nízke oneskorenie', '20 ms'], [40, 'Vyvážené', '40 ms'], [80, 'Max. stabilita', '80 ms']],
+    () => S.values['global.bridge_ms'], v => { S.values['global.bridge_ms'] = v; scheduleSave(); }, 'stab');
+  return h('div', { class: 'vstwrap' }, h('div', { class: 'hostbar', id: 'hostBar' }), h('div', { class: 'slots', id: 'slots' }),
+    h('div', { class: 'stabrow' }, h('div', { class: 'stabtxt' }, h('b', {}, 'Stabilita'), h('small', {}, 'Keď zvuk seká (výpadky), daj viac. Za cenu väčšieho oneskorenia hlasu.')), stab),
+    h('div', { class: 'vsttip', id: 'vstTip' }));
 }
 function paintSlots() {
   const bar = $('#hostBar'), box = $('#slots'); if (!bar || !box) return;
@@ -633,7 +638,7 @@ function paintSlots() {
   bar.innerHTML = '';
   const st = !hs.running ? ['rec', 'Host nebeží', h('button', { class: 'btn small', onclick: async () => { try { await invoke('host_start'); } catch (e) { toast(String(e), true); } setTimeout(refreshHost, 600); } }, 'Spustiť')]
     : !hs.bridge ? ['amber', 'Host beží – čaká na mikrofón (spusti odposluch alebo Discord)']
-    : ['mint', `Host beží · ${(hs.rate / 1000 || 0).toFixed(1)} kHz${hs.mem_mb ? ` · RAM ${hs.mem_mb} MB` : ''}${hs.underruns ? ` · výpadky ${hs.underruns}` : ''}`];
+    : ['mint', `Host beží · ${(hs.rate / 1000 || 0).toFixed(1)} kHz${hs.mem_mb ? ` · RAM ${hs.mem_mb} MB` : ''}${hs.underruns_min ? ` · výpadky za minútu: ${hs.underruns_min}` : ''}`];
   bar.append(h('span', { class: 'dot ' + st[0] }), h('span', {}, st[1]));
   if (st[2]) bar.append(st[2]);
   box.innerHTML = '';

@@ -514,6 +514,14 @@ input[type=range].vs::-webkit-slider-thumb{width:18px;height:18px;margin-top:0;m
 .whenopt small{color:var(--muted);font-size:12px}
 .whenopt.rec{box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--mint) 45%,transparent)}
 
+/* ---------- stabilita VST ---------- */
+.stabrow{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--panel);box-shadow:var(--card-shadow)}
+.stabrow .stabtxt{display:flex;flex-direction:column;gap:2px;flex:1;min-width:200px}
+.stabrow b{font:600 13px var(--body)}
+.stabrow small{color:var(--muted);font-size:11.5px}
+.seg.stab button{display:flex;flex-direction:column;align-items:center;gap:1px}
+.seg.stab small{font:500 10.5px var(--tc);color:var(--faint)}
+
 /* ---------- soundboard + hlasové efekty ---------- */
 #v-board{container-type:inline-size}
 .sbsec{padding:18px 20px 20px;margin-bottom:14px}
