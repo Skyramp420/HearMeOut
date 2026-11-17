@@ -61,6 +61,11 @@ const P = {
   alien: '<ellipse cx="8" cy="8" rx="6.5" ry="2.6"/><path d="M4.5 6.6a3.5 3.5 0 0 1 7 0M5 12.5l-1 1.5M11 12.5l1 1.5M8 11v2.5"/>',
   drop: '<path d="M8 2v8M5 7l3 3 3-3"/><path d="M2.5 10.5v2a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1v-2"/>',
   edit: '<path d="M10.5 2.5 13.5 5.5 6 13H3v-3Z"/>',
+  star: '<path d="m8 1.9 1.85 3.85 4.15.55-3.05 2.9.78 4.15L8 11.35 4.27 13.35l.78-4.15L2 6.3l4.15-.55Z"/>',
+  starfill: '<path fill="currentColor" d="m8 1.9 1.85 3.85 4.15.55-3.05 2.9.78 4.15L8 11.35 4.27 13.35l.78-4.15L2 6.3l4.15-.55Z"/>',
+  cut: '<circle cx="4" cy="4.5" r="2"/><circle cx="4" cy="11.5" r="2"/><path d="M5.6 5.6 14 12.5M5.6 10.4 14 3.5"/>',
+  more: '<path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2.6"/>',
+  wheel: '<circle cx="8" cy="8" r="6.25"/><circle cx="8" cy="8" r="2.2"/><path d="M8 1.75v4.05M8 10.2v4.05M1.75 8h4.05M10.2 8h4.05"/>',
   plug: '<path d="M6 1.75v3M10 1.75v3M4.25 4.75h7.5v2.5a3.75 3.75 0 0 1-7.5 0ZM8 11v3.25"/>',
 };
 const icon = (n, cls = 'i') => { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 16 16'); s.setAttribute('class', cls); s.innerHTML = P[n] || ''; return s; };
@@ -164,11 +169,12 @@ const mockState = { registered: true, payload_ok: true, version: '0.5.0', apo_ve
 let mockPresets = [];
 let mockPlaying = [];
 let mockBoard = { mic_volume: 80, local_volume: 60, normalize: true, stop_hk: '0,19', stop_label: 'Pause', pads: [
-  { id: 'p1', name: 'Vine boom', file: 'a.mp3', vol: 100, hk: '0,97', hk_label: 'Num 1' },
-  { id: 'p2', name: 'Bruh', file: 'b.mp3', vol: 90, hk: '0,98', hk_label: 'Num 2' },
+  { id: 'p1', name: 'Vine boom', file: 'a.mp3', vol: 100, hk: '0,97', hk_label: 'Num 1', fav: true, cat: 'Memes', start_ms: 0, end_ms: 0 },
+  { id: 'p2', name: 'Bruh', file: 'b.mp3', vol: 90, hk: '0,98', hk_label: 'Num 2', cat: 'Memes', start_ms: 350, end_ms: 1800 },
   { id: 'p3', name: 'Airhorn', file: 'c.mp3', vol: 70, hk: '2,51', hk_label: 'Ctrl+3' },
   { id: 'p4', name: 'Sad violin', file: 'd.mp3', vol: 100, hk: '', hk_label: '' },
-  { id: 'p5', name: 'Applause', file: 'e.wav', vol: 100, hk: '0,101', hk_label: 'Num 5' }] };
+  { id: 'p5', name: 'Applause', file: 'e.wav', vol: 100, hk: '0,101', hk_label: 'Num 5', cat: 'Reakcie', fav: true }],
+  cats: ['Memes', 'Reakcie'], wheel_hk: '2,192', wheel_label: 'Ctrl+`' };
 let mockChain = [{ uid: 'a1', enabled: true, path: 'C:\\Program Files\\Common Files\\VST3\\Speachy.vst3' }, { uid: 'b2', enabled: true, path: 'C:\\Program Files\\Common Files\\VST3\\Nuro Audio\\Xvox Pro.vst3' }];
 const invoke = IS_APP ? TAURI.core.invoke : async (cmd, a) => {
   await new Promise(r => setTimeout(r, 60));
@@ -186,6 +192,8 @@ const invoke = IS_APP ? TAURI.core.invoke : async (cmd, a) => {
   if (cmd === 'sb_import') return a.paths.map((p, i) => ({ id: 'n' + Date.now().toString(16) + i, name: p.split('\\').pop().replace(/\.\w+$/, '').replace(/[-_]/g, ' '), file: 'x.mp3', vol: 100, hk: '', hk_label: '' }));
   if (cmd === 'sb_play') { mockPlaying = [a.id]; setTimeout(() => mockPlaying = [], 1800); return; }
   if (cmd === 'sb_stop') { mockPlaying = []; return; }
+  if (cmd === 'sb_audio') return null;
+  if (cmd === 'sb_wheel') return;
   if (cmd === 'host_status') return { sb: { pads: mockBoard.pads.length, mic: true, playing: mockPlaying, hk_fail: ['p3'] }, running: true, bridge: true, rate: 48000, underruns: 0, mem_mb: 10, underruns_min: 3, slots: mockChain.map((c, i) => ({ uid: c.uid, name: c.path.split('\\').pop().replace('.vst3', ''), vendor: ['Neverdie Audio', 'Nuro Audio'][i % 2], ok: true, enabled: c.enabled })) };
   if (cmd === 'vst_scan') return [{ name: 'Speachy', path: 'C:\\Program Files\\Common Files\\VST3\\Speachy.vst3', folder: 'VST3' }, { name: 'Xvox Pro', path: 'C:\\Program Files\\Common Files\\VST3\\Nuro Audio\\Xvox Pro.vst3', folder: 'Nuro Audio' }, { name: 'FabFilter Pro-Q 3', path: 'C:\\x\\FabFilter Pro-Q 3.vst3', folder: 'FabFilter' }];
   if (cmd === 'update_check') return { current: '0.4.0', latest: '0.4.0', available: false, notes: '', url: '', page: '' };
@@ -863,9 +871,12 @@ async function deletePreset(name) {
 }
 
 // starý efekt v mikrofóne (aktualizovala sa len appka) – soundboard a hlasové efekty potrebujú nový
+const APO_REQUIRED = '0.6';   // pri zmene APO (C++ v apo/ alebo core/) zvýš spolu s HMO_VERSION
 function apoOutdated() {
   const a = S.app; if (!a?.registered || !a.apo_version || !a.version) return false;
-  return a.apo_version !== a.version.split('.').slice(0, 2).join('.');
+  // efekt v mikrofóne sa mení zriedka – porovnávame s verziou, ktorú appka naozaj potrebuje
+  const need = APO_REQUIRED.split('.').map(Number), have = a.apo_version.split('.').map(Number);
+  return have[0] < need[0] || (have[0] === need[0] && (have[1] || 0) < need[1]);
 }
 function apoBanner() {
   if (!apoOutdated()) return null;
@@ -896,7 +907,9 @@ async function syncHost() {
     else { await invoke('host_stop'); await invoke('host_autostart', { on: false }); }
   } catch (e) { toast(String(e), true); }
 }
-async function loadBoard() { try { B = await invoke('sb_get'); } catch { B = null; } if (!B) B = { mic_volume: 80, local_volume: 60, normalize: true, stop_hk: '', stop_label: '', pads: [] }; }
+async function loadBoard() { try { B = await invoke('sb_get'); } catch { B = null; } if (!B) B = { mic_volume: 80, local_volume: 60, normalize: true, stop_hk: '', stop_label: '', pads: [] };
+  B.cats ||= []; B.wheel_hk ||= ''; B.wheel_label ||= '';
+  for (const p of B.pads) { p.cat ||= ''; p.fav = !!p.fav; p.start_ms ||= 0; p.end_ms ||= 0; } }
 function saveBoard(now = false) {
   clearTimeout(boardSaveT);
   const go = async () => { const had = needHost(); try { await invoke('sb_set', { board: B }); } catch (e) { toast(String(e), true); } if (needHost() !== had || now) syncHost(); };
@@ -940,16 +953,85 @@ function captureHotkey(title, cur, onSet) {
   const m = modal(box, [['Zrušiť', () => { m.close(); cleanup(); }], ['Uložiť', () => { if (res) onSet(res); m.close(); cleanup(); }, 'primary']]);
 }
 
+
+// ---- kategórie a filtrovanie
+let boardTab = 'all';   // 'all' | 'fav' | názov kategórie
+const tabPads = () => B.pads.filter(p => boardTab === 'all' || (boardTab === 'fav' ? p.fav : p.cat === boardTab));
+function catMenu(anchor, cat) {
+  popMenu(anchor, [
+    ['edit', 'Premenovať', () => askText('Premenovať kategóriu', cat, n => {
+      if (B.cats.includes(n) && n !== cat) return toast('Taká kategória už existuje', true);
+      B.cats = B.cats.map(c => c === cat ? n : c); B.pads.forEach(p => { if (p.cat === cat) p.cat = n; });
+      boardTab = n; saveBoard(true); renderBoard(true);
+    })],
+    ['trash', 'Zmazať kategóriu', () => {
+      B.cats = B.cats.filter(c => c !== cat); B.pads.forEach(p => { if (p.cat === cat) p.cat = ''; });
+      boardTab = 'all'; saveBoard(true); renderBoard(true); toast(`Kategória „${cat}“ zmazaná – zvuky ostali vo Všetko`);
+    }, 'danger'],
+  ]);
+}
+function newCategory(after) {
+  askText('Nová kategória', '', n => {
+    if (B.cats.includes(n)) return toast('Taká kategória už existuje', true);
+    B.cats.push(n); if (after) after(n); else boardTab = n;
+    saveBoard(true); renderBoard(true);
+  }, 'Napr. Memes, Reakcie, Hudba');
+}
+function boardTabs() {
+  const count = f => B.pads.filter(f).length;
+  const tab = (id, label, n, ic) => {
+    const b = h('button', { class: 'btab' + (boardTab === id ? ' on' : ''), onclick: () => { boardTab = id; renderBoard(true); } },
+      ic ? icon(ic) : null, h('span', {}, label), h('small', {}, n));
+    if (id !== 'all' && id !== 'fav') {
+      b.addEventListener('contextmenu', e => { e.preventDefault(); catMenu(b, id); });
+      b.addEventListener('dblclick', () => catMenu(b, id));
+    }
+    return b;
+  };
+  const row = h('div', { class: 'btabs' },
+    tab('all', 'Všetko', B.pads.length), tab('fav', 'Obľúbené', count(p => p.fav), 'star'),
+    ...B.cats.map(c => tab(c, c, count(p => p.cat === c))),
+    h('button', { class: 'btab add', title: 'Nová kategória', onclick: () => newCategory() }, icon('plus'), h('span', {}, 'Kategória')));
+  if (B.cats.includes(boardTab)) row.append(h('button', { class: 'iconbtn', title: 'Upraviť kategóriu', onclick: e => catMenu(e.currentTarget, boardTab) }, icon('more')));
+  return row;
+}
+
+// všeobecné menu (ikona, text, akcia, trieda)
+function popMenu(anchor, items) {
+  const r = anchor.getBoundingClientRect();
+  const menu = h('div', { class: 'pop-menu' });
+  for (const it of items) {
+    if (it === '-') { menu.append(h('div', { class: 'sep' })); continue; }
+    const [ic, label, fn, cls, on] = it;
+    menu.append(h('button', { class: (cls || '') + (on ? ' on' : ''), onclick: () => { close(); fn(); } }, ic ? icon(ic) : h('span', { class: 'ic0' }), h('span', {}, label)));
+  }
+  const scrim = h('div', { class: 'menuscrim', onclick: () => close() });
+  const close = () => { menu.classList.add('out'); setTimeout(() => { menu.remove(); scrim.remove(); }, 150); };
+  document.body.append(scrim, menu);
+  const mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = Math.min(r.left, innerWidth - mw - 8) + 'px';
+  menu.style.top = (r.bottom + 6 + mh > innerHeight - 8 ? Math.max(8, r.top - mh - 6) : r.bottom + 6) + 'px';
+}
+function askText(title, value, onOk, placeholder = '') {
+  const inp = h('input', { class: 'txt', value, maxlength: 40, placeholder });
+  const ok = () => { const n = inp.value.trim().replace(/[|\n\r]/g, ''); if (!n) return inp.focus(); m.close(); onOk(n); };
+  inp.addEventListener('keydown', e => e.key === 'Enter' && ok());
+  const m = modal(h('div', {}, h('h3', {}, title), inp), [['Zrušiť', null], ['Uložiť', ok, 'primary']]);
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+}
+
 async function addSounds(paths) {
   if (!paths) { try { paths = await invoke('sb_pick'); } catch (e) { return toast(String(e), true); } }
   if (!paths?.length) return;
   try {
     const pads = await invoke('sb_import', { paths });
     if (!pads.length) return;
+    for (const p of pads) { p.cat = B.cats.includes(boardTab) ? boardTab : ''; p.fav = boardTab === 'fav'; p.start_ms = 0; p.end_ms = 0; }
     B.pads.push(...pads);
     saveBoard(true);
-    toast(pads.length === 1 ? `Pridaný zvuk „${pads[0].name}“` : `Pridaných ${pads.length} zvukov`);
     if (S.view === 'board') renderBoard(true);
+    if (pads.length === 1) trimEditor(pads[0], true);   // hneď po vložení sa dá zvuk skrátiť
+    else toast(`Pridaných ${pads.length} zvukov – strih nájdeš v menu ⋯ pri zvuku`);
   } catch (e) { toast(String(e), true); }
 }
 
@@ -972,6 +1054,8 @@ function funPanel() {
     h('div', { class: 'funwrap' }, tiles, knobs));
 }
 
+
+const fmtTime = ms => { const s = ms / 1000; const m = Math.floor(s / 60); return `${m}:${(s - m * 60).toFixed(2).padStart(5, '0')}`; };
 function padCard(p, i) {
   const playing = sbState.playing?.includes(p.id);
   const fail = sbState.hk_fail?.includes(p.id);
@@ -984,15 +1068,32 @@ function padCard(p, i) {
     icon(fail ? 'warn' : 'key'), p.hk_label || 'Skratka');
   const play = h('button', { class: 'padplay', 'aria-label': 'Prehrať ' + p.name, onclick: () => playPad(p.id) },
     h('span', { class: 'pbig' }, icon(playing ? 'stop' : 'play')), h('span', { class: 'eq' }, h('i'), h('i'), h('i'), h('i')));
+  const star = h('button', { class: 'pstar' + (p.fav ? ' on' : ''), title: p.fav ? 'Odobrať z obľúbených' : 'Pridať do obľúbených',
+    onclick: () => { p.fav = !p.fav; saveBoard(); renderBoard(true); } }, icon(p.fav ? 'starfill' : 'star'));
+  const more = h('button', { class: 'iconbtn', title: 'Viac', onclick: e => padMenu(e.currentTarget, p) }, icon('more'));
+  const trimmed = p.start_ms > 0 || p.end_ms > 0;
   const name = h('b', { class: 'padname', title: 'Dvojklik = premenovať', ondblclick: () => renamePad(p) }, p.name);
+  const tags = h('div', { class: 'ptags' },
+    boardTab === 'all' && p.cat ? h('span', {}, p.cat) : null,
+    trimmed ? h('span', { class: 'trim', title: 'Zvuk je skrátený' }, icon('cut'), fmtTime(p.start_ms) + '–' + (p.end_ms ? fmtTime(p.end_ms) : 'koniec')) : null);
   return h('div', { class: 'pad card land' + (playing ? ' playing' : ''), style: `--i:${i}`, 'data-id': p.id },
     play,
-    h('div', { class: 'pmeta' }, name,
-      h('div', { class: 'prow' }, hk,
-        h('div', { class: 'pmenu' },
-          h('button', { class: 'iconbtn', title: 'Premenovať', onclick: () => renamePad(p) }, icon('edit')),
-          h('button', { class: 'iconbtn', title: 'Odstrániť', onclick: () => { B.pads = B.pads.filter(x => x !== p); saveBoard(true); renderBoard(true); } }, icon('trash'))))),
+    h('div', { class: 'pmeta' }, h('div', { class: 'ptop' }, name, star),
+      h('div', { class: 'prow' }, hk, h('div', { class: 'pmenu' }, more))),
+    tags.childNodes.length ? tags : null,
     h('div', { class: 'pvol' }, vol, volTxt));
+}
+function padMenu(anchor, p) {
+  popMenu(anchor, [
+    ['cut', 'Strih zvuku…', () => trimEditor(p)],
+    ['edit', 'Premenovať', () => renamePad(p)],
+    '-',
+    ['folder', 'Bez kategórie', () => { p.cat = ''; saveBoard(); renderBoard(true); }, '', !p.cat],
+    ...B.cats.map(c => ['folder', c, () => { p.cat = c; saveBoard(); renderBoard(true); }, '', p.cat === c]),
+    ['plus', 'Nová kategória…', () => newCategory(n => { p.cat = n; })],
+    '-',
+    ['trash', 'Odstrániť zvuk', () => { B.pads = B.pads.filter(x => x !== p); saveBoard(true); renderBoard(true); }, 'danger'],
+  ]);
 }
 async function playPad(id) {
   try {
@@ -1000,12 +1101,120 @@ async function playPad(id) {
   } catch (e) { toast(String(e), true); }
   setTimeout(pollBoard, 120);
 }
-function renamePad(p) {
-  const inp = h('input', { class: 'txt', value: p.name, maxlength: 40 });
-  const ok = () => { const n = inp.value.trim(); if (n) { p.name = n; saveBoard(true); renderBoard(true); } m.close(); };
-  inp.addEventListener('keydown', e => e.key === 'Enter' && ok());
-  const m = modal(h('div', {}, h('h3', {}, 'Premenovať zvuk'), inp), [['Zrušiť', null], ['Uložiť', ok, 'primary']]);
-  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+function renamePad(p) { askText('Premenovať zvuk', p.name, n => { p.name = n; saveBoard(true); renderBoard(true); }); }
+
+// ---- editor strihu (nedeštruktívny – host strihá pri prehrávaní)
+let trimCtx = null;
+async function trimEditor(p, fresh = false) {
+  trimCtx = trimCtx || new (window.AudioContext || window.webkitAudioContext)();
+  const ctx = trimCtx;
+  let buf;
+  try {
+    const b64 = await invoke('sb_audio', { file: p.file });
+    if (b64) {
+      const bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; ++i) bytes[i] = bin.charCodeAt(i);
+      buf = await ctx.decodeAudioData(bytes.buffer);
+    } else {   // náhľad v prehliadači
+      buf = ctx.createBuffer(1, ctx.sampleRate * 3, ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; ++i) { const t = i / ctx.sampleRate; d[i] = (t > .35 && t < 2.4 ? Math.sin(t * 900) * Math.exp(-((t * 3) % 1) * 3) * .8 : (Math.random() - .5) * .02); }
+    }
+  } catch (e) { return toast('Zvuk sa nedá otvoriť na úpravu', true); }
+  const durMs = Math.round(buf.duration * 1000);
+  let a = Math.min(p.start_ms || 0, durMs - 50), b = p.end_ms ? Math.min(p.end_ms, durMs) : durMs;
+  if (b <= a) { a = 0; b = durMs; }
+
+  // obálka (min/max na stĺpec), z mixu kanálov
+  const W = 640, H = 150, cols = 320;
+  const peaks = new Float32Array(cols * 2);
+  {
+    const chs = [...Array(buf.numberOfChannels)].map((_, c) => buf.getChannelData(c));
+    const per = Math.max(1, Math.floor(buf.length / cols));
+    let mx = 1e-4;
+    for (let c = 0; c < cols; ++c) {
+      let lo = 0, hi = 0;
+      for (let i = c * per, e = Math.min(buf.length, i + per); i < e; i += 4) {
+        let v = 0; for (const ch of chs) v += ch[i]; v /= chs.length;
+        if (v < lo) lo = v; if (v > hi) hi = v;
+      }
+      peaks[c * 2] = lo; peaks[c * 2 + 1] = hi; mx = Math.max(mx, -lo, hi);
+    }
+    for (let i = 0; i < peaks.length; ++i) peaks[i] /= mx;
+  }
+  const cv = h('canvas', { class: 'wave' });
+  const dpr = devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext('2d');
+  const cs = getComputedStyle(document.documentElement);
+  const accent = cs.getPropertyValue('--accent').trim() || '#ff9f0a', faint = cs.getPropertyValue('--faint').trim() || '#6e6e73';
+  const hl = h('div', { class: 'th l' }, h('i')), hr = h('div', { class: 'th r' }, h('i'));
+  const shadeL = h('div', { class: 'shade l' }), shadeR = h('div', { class: 'shade r' }), head = h('div', { class: 'phead' });
+  const box = h('div', { class: 'wavebox' }, cv, shadeL, shadeR, hl, hr, head);
+  const info = h('div', { class: 'trinfo' });
+  const draw = () => {
+    g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const bw = W / cols;
+    for (let c = 0; c < cols; ++c) {
+      const t = (c + .5) / cols * durMs, inSel = t >= a && t <= b;
+      g.fillStyle = inSel ? accent : faint;
+      const y0 = H / 2 - Math.max(1, peaks[c * 2 + 1] * H * .46), y1 = H / 2 - peaks[c * 2] * H * .46;
+      g.fillRect(c * bw + .5, y0, Math.max(1, bw - 1), Math.max(2, y1 - y0));
+    }
+    const pa = a / durMs * 100, pb = b / durMs * 100;
+    shadeL.style.width = pa + '%'; shadeR.style.left = pb + '%';
+    hl.style.left = pa + '%'; hr.style.left = pb + '%';
+    info.innerHTML = '';
+    info.append(h('span', {}, 'Začiatok ', h('b', {}, fmtTime(a))), h('span', {}, 'Koniec ', h('b', {}, fmtTime(b))),
+      h('span', {}, 'Dĺžka ', h('b', {}, ((b - a) / 1000).toFixed(2).replace('.', ',') + ' s')), h('span', { class: 'of' }, 'z ' + (durMs / 1000).toFixed(1).replace('.', ',') + ' s'));
+  };
+  // ťahanie okrajov (aj klik do vlny posunie bližší okraj)
+  let drag = null;
+  const msAt = e => { const r = box.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width, 0, 1) * durMs; };
+  box.addEventListener('pointerdown', e => {
+    const t = msAt(e);
+    drag = e.target.closest('.th.l') ? 'a' : e.target.closest('.th.r') ? 'b' : (Math.abs(t - a) < Math.abs(t - b) ? 'a' : 'b');
+    box.setPointerCapture(e.pointerId); move(e);
+  });
+  const move = e => {
+    if (!drag) return;
+    const t = Math.round(msAt(e));
+    if (drag === 'a') a = clamp(t, 0, b - 50); else b = clamp(t, a + 50, durMs);
+    stop(); draw();
+  };
+  box.addEventListener('pointermove', move);
+  box.addEventListener('pointerup', () => { drag = null; });
+  // prehrávanie výberu
+  let src = null, raf = 0;
+  const playBtn = h('button', { class: 'btn', onclick: () => src ? stop() : play() }, icon('play'), h('span', {}, 'Prehrať výber'));
+  const stop = () => {
+    if (src) { try { src.stop(); } catch { } src = null; }
+    cancelAnimationFrame(raf); head.style.opacity = 0;
+    playBtn.replaceChildren(icon('play'), h('span', {}, 'Prehrať výber'));
+  };
+  const play = async () => {
+    stop(); await ctx.resume();
+    src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination);
+    const t0 = ctx.currentTime, s0 = a / 1000, len = (b - a) / 1000;
+    src.start(0, s0, len); src.onended = () => stop();
+    playBtn.replaceChildren(icon('stop'), h('span', {}, 'Zastaviť'));
+    head.style.opacity = 1;
+    const tick = () => { const pos = s0 + (ctx.currentTime - t0); head.style.left = (pos * 1000 / durMs * 100) + '%'; if (src) raf = requestAnimationFrame(tick); };
+    tick();
+  };
+  const key = e => { if (e.code === 'Space') { e.preventDefault(); src ? stop() : play(); } };
+  window.addEventListener('keydown', key);
+  draw();
+  const done = () => { stop(); window.removeEventListener('keydown', key); };
+  const m = modal(h('div', { class: 'trimmer' },
+    h('h3', {}, fresh ? `Pridaný zvuk – „${p.name}“` : `Strih – „${p.name}“`),
+    h('p', {}, 'Ťahaj oranžové okraje a vyber časť, ktorá sa má prehrať. Medzerník = prehrať. Pôvodný súbor ostane celý, strih vieš kedykoľvek zmeniť.'),
+    box, h('div', { class: 'trrow' }, playBtn, info,
+      h('button', { class: 'btn ghost', onclick: () => { a = 0; b = durMs; stop(); draw(); } }, 'Celý zvuk'))),
+    [['Zrušiť', () => { done(); m.close(); }],
+     ['Uložiť', () => { done(); p.start_ms = a; p.end_ms = b >= durMs - 5 ? 0 : b; if (a < 5) p.start_ms = 0; saveBoard(true); renderBoard(true); m.close(); toast('Strih uložený'); }, 'primary']]);
+  m.box.classList.add('wide');
+  m.scrim.addEventListener('click', e => { if (e.target === m.scrim) done(); });
 }
 
 function boardSettings() {
@@ -1018,23 +1227,39 @@ function boardSettings() {
   };
   const norm = h('button', { class: 'sw' + (B.normalize ? ' on' : ''), role: 'switch', 'aria-label': 'Vyrovnať hlasitosť',
     onclick: () => { B.normalize = !B.normalize; norm.classList.toggle('on', B.normalize); saveBoard(); } });
-  const stopFail = sbState.hk_fail?.includes('stop');
-  const stopHk = h('button', { class: 'hkchip' + (B.stop_hk ? '' : ' empty') + (stopFail ? ' fail' : ''),
-    onclick: () => captureHotkey('Skratka „Stop všetko“', B.stop_label, r => { B.stop_hk = r.hk; B.stop_label = r.label; saveBoard(true); renderBoard(true); }) },
-    icon(stopFail ? 'warn' : 'key'), B.stop_label || 'Nastaviť');
-  return h('section', { class: 'card sbset land', style: '--i:2' },
+  const chip = (key, labelKey, title, failId) => {
+    const fail = sbState.hk_fail?.includes(failId);
+    return h('button', { class: 'hkchip' + (B[key] ? '' : ' empty') + (fail ? ' fail' : ''), title: fail ? 'Túto skratku už používa iná appka' : '',
+      onclick: () => captureHotkey(title, B[labelKey], r => { B[key] = r.hk; B[labelKey] = r.label; saveBoard(true); renderBoard(true); }) },
+      icon(fail ? 'warn' : 'key'), B[labelKey] || 'Nastaviť');
+  };
+  return h('section', { class: 'card sbset land', style: '--i:3' },
     rng('Do mikrofónu', 'mic_volume', 150, 'Ako nahlas zvuky počujú ostatní'),
     rng('V slúchadlách', 'local_volume', 150, 'Ako nahlas ich počuješ ty (0 = vôbec)'),
     h('div', { class: 'field sw-f' }, h('label', {}, 'Vyrovnať hlasitosť'), h('div', { class: 'swrow' }, norm, h('small', {}, 'tiché aj hlasné zvuky budú rovnako silné')), h('span')),
-    h('div', { class: 'field sw-f' }, h('label', {}, 'Stop všetko'), h('div', { class: 'swrow' }, stopHk), h('span')));
+    h('div', { class: 'field sw-f' }, h('label', {}, 'Stop všetko'), h('div', { class: 'swrow' }, chip('stop_hk', 'stop_label', 'Skratka „Stop všetko“', 'stop')), h('span')));
+}
+
+function wheelCard() {
+  const fail = sbState.hk_fail?.includes('wheel');
+  const chip = h('button', { class: 'hkchip big' + (B.wheel_hk ? '' : ' empty') + (fail ? ' fail' : ''), title: fail ? 'Túto skratku už používa iná appka' : 'Nastaviť skratku kolesa',
+    onclick: () => captureHotkey('Skratka pre koleso zvukov', B.wheel_label, r => { B.wheel_hk = r.hk; B.wheel_label = r.label; saveBoard(true); renderBoard(true); }) },
+    icon(fail ? 'warn' : 'key'), B.wheel_label || 'Nastaviť skratku');
+  // malý náhľad kolesa
+  const mini = h('div', { class: 'wmini' }, ...[...Array(8)].map((_, i) => h('i', { style: `--k:${i}` })), h('b'));
+  return h('section', { class: 'card wheelcard land', style: '--i:2' }, mini,
+    h('div', { class: 'wtxt' }, h('h2', {}, 'Koleso zvukov'),
+      h('p', {}, 'Podrž skratku, ukáž myšou na zvuk a pusti – prehrá sa. Krátke stlačenie nechá koleso otvorené. Koliesko myši = strany, Q / E = kategórie a obľúbené.')),
+    h('div', { class: 'wact' }, chip, h('button', { class: 'btn small', onclick: async () => { try { await invoke('sb_wheel'); } catch (e) { toast(String(e), true); } } }, icon('wheel'), 'Vyskúšať')));
 }
 
 async function renderBoard(keep) {
   const v = $('#v-board');
   if (!B || !keep) await loadBoard();
+  if (boardTab !== 'all' && boardTab !== 'fav' && !B.cats.includes(boardTab)) boardTab = 'all';
   const mark = bound.length;
   if (v._own) { for (const f of v._own) { const k = bound.indexOf(f); if (k >= 0) bound.splice(k, 1); } }
-  const st = $('#v-board').scrollTop;
+  const st = $('#main').scrollTop;
   v.innerHTML = '';
   v.append(h('div', { class: 'head' },
     h('div', {}, h('h1', {}, 'Soundboard'), h('p', {}, 'Zvuky a efekty priamo do mikrofónu – počujú ich všetci v hovore, bez virtuálnych káblov.')),
@@ -1044,20 +1269,24 @@ async function renderBoard(keep) {
   const ban = apoBanner(); if (ban) v.append(ban);
   v.append(funPanel());
 
+  const list = tabPads();
   const grid = h('div', { class: 'pads' });
-  B.pads.forEach((p, i) => grid.append(padCard(p, i)));
-  grid.append(h('button', { class: 'pad add land', style: `--i:${B.pads.length}`, onclick: () => addSounds() },
-    h('span', { class: 'addic' }, icon('drop')), h('b', {}, 'Pridať zvuky'), h('small', {}, 'MP3, WAV, FLAC – alebo ich sem pretiahni')));
-  const micNote = !B.pads.length ? '' : sbState.mic ? 'Mikrofón beží – zvuky idú do hovoru.' : 'Do hovoru idú, keď mikrofón práve niečo používa (Discord, hra…). Inak ich počuješ len ty.';
+  list.forEach((p, i) => grid.append(padCard(p, i)));
+  const where = boardTab === 'fav' ? ' do obľúbených' : B.cats.includes(boardTab) ? ` do „${boardTab}“` : '';
+  grid.append(h('button', { class: 'pad add land', style: `--i:${list.length}`, onclick: () => addSounds() },
+    h('span', { class: 'addic' }, icon('drop')), h('b', {}, 'Pridať zvuky' + where), h('small', {}, 'MP3, WAV, FLAC – alebo ich sem pretiahni')));
+  const micNote = !B.pads.length ? 'Pridaj zvuky a nastav im skratky – pustíš ich aj počas hry.'
+    : sbState.mic ? 'Mikrofón beží – zvuky idú do hovoru. Pravý klik na kategóriu = upraviť.' : 'Do hovoru idú, keď mikrofón práve niečo používa (Discord, hra…). Inak ich počuješ len ty.';
   v.append(h('section', { class: 'card sbsec land', style: '--i:1' },
-    h('div', { class: 'sbh' }, h('div', {}, h('h2', {}, 'Zvuky'), h('p', { id: 'sbNote' }, micNote || 'Pridaj zvuky a nastav im skratky – pustíš ich aj počas hry.'))),
-    grid));
+    h('div', { class: 'sbh' }, h('div', {}, h('h2', {}, 'Zvuky'), h('p', { id: 'sbNote' }, micNote))),
+    boardTabs(), grid));
+  v.append(wheelCard());
   v.append(boardSettings());
   v._own = bound.slice(mark);
-  v.scrollTop = st;
+  $('#main').scrollTop = st;
 }
 async function pollBoard() {
-  if (S.view !== 'board' || document.hidden || !B?.pads.length) return;
+  if (S.view !== 'board' || document.hidden || !B?.pads.length || document.querySelector('.scrim')) return;
   let hs = {};
   try { hs = await invoke('host_status') || {}; } catch { }
   const sb = hs.sb || { playing: [], hk_fail: [], mic: false };
@@ -1189,7 +1418,7 @@ function modal(content, buttons) {
     h('button', { class: 'btn ' + (cls || ''), onclick: () => fn ? fn() : close() }, l))));
   if (buttons.length) scrim.addEventListener('click', e => e.target === scrim && close());
   document.body.append(scrim);
-  return { close };
+  return { close, box, scrim };
 }
 function confirmBox(title, text, okLabel, okCls = 'danger') {
   return new Promise(res => {

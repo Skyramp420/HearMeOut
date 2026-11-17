@@ -18,7 +18,7 @@
 namespace sb {
 namespace {
 
-struct Pad { std::string id, name, file; float vol = 1; UINT mods = 0, vk = 0; bool hkOk = true; };
+struct Pad { std::string id, name, file, cat, label; float vol = 1; UINT mods = 0, vk = 0; bool hkOk = true, fav = false; uint32_t startMs = 0, endMs = 0; };
 struct Voice {
     std::string id;
     std::shared_ptr<const std::vector<float>> pcm;
@@ -32,6 +32,8 @@ HWND g_notify = nullptr; UINT g_notifyMsg = 0;
 std::mutex g_mx;                       // chráni všetko nižšie
 std::vector<Pad> g_pads;
 UINT g_stopMods = 0, g_stopVk = 0; bool g_stopOk = true;
+UINT g_wheelMods = 0, g_wheelVk = 0; bool g_wheelOk = true;
+std::vector<std::string> g_cats;
 float g_micVol = 0.8f, g_locVol = 0.6f; bool g_normalize = true;
 std::vector<Voice> g_voices;
 std::vector<int> g_registered;
@@ -45,6 +47,8 @@ ma_device g_dev; bool g_devInit = false, g_devRunning = false; uint32_t g_devRat
 ULONGLONG g_idleSince = 0;
 
 constexpr int kStopHotkey = 0xB000;
+constexpr int kWheelHotkey = 0xB001;
+void (*g_onWheel)(UINT vk) = nullptr;
 constexpr double kMaxSeconds = 180.0;
 
 std::wstring W(const std::string& s) {
@@ -95,7 +99,7 @@ void devEnsure(uint32_t rate) {   // pod zámkom
 }
 
 // mono, vzorkovacia frekvencia APO
-std::shared_ptr<std::vector<float>> decode(const std::wstring& path, uint32_t rate, std::string& err) {
+std::shared_ptr<std::vector<float>> decode(const std::wstring& path, uint32_t rate, std::string& err, uint32_t startMs = 0, uint32_t endMs = 0) {
     ma_decoder_config c = ma_decoder_config_init(ma_format_f32, 1, rate);
     ma_decoder d;
     if (ma_decoder_init_file_w(path.c_str(), &c, &d) != MA_SUCCESS) { err = "nepodporovaný alebo poškodený súbor"; return nullptr; }
@@ -110,6 +114,17 @@ std::shared_ptr<std::vector<float>> decode(const std::wstring& path, uint32_t ra
         if (pcm->size() >= maxN) { pcm->resize(maxN); break; }
     }
     ma_decoder_uninit(&d);
+    // strih z appky (nedeštruktívny) + krátke dolaďovanie, nech na okrajoch necvakne
+    if (startMs || endMs) {
+        size_t a = std::min(pcm->size(), (size_t)((uint64_t)startMs * rate / 1000));
+        size_t b = endMs ? std::min(pcm->size(), (size_t)((uint64_t)endMs * rate / 1000)) : pcm->size();
+        if (b > a) {
+            pcm->erase(pcm->begin() + b, pcm->end());
+            pcm->erase(pcm->begin(), pcm->begin() + a);
+            const size_t f = std::min(pcm->size() / 2, (size_t)(rate / 200));   // 5 ms
+            for (size_t i = 0; i < f; ++i) { float g = (float)i / (float)f; (*pcm)[i] *= g; (*pcm)[pcm->size() - 1 - i] *= g; }
+        }
+    }
     if (pcm->empty()) { err = "prázdny zvuk"; return nullptr; }
     pcm->shrink_to_fit();
     return pcm;
@@ -201,6 +216,11 @@ void registerHotkeys() {   // GUI vlákno, pod zámkom
         if (RegisterHotKey(nullptr, id, p.mods | MOD_NOREPEAT, p.vk)) g_registered.push_back(id);
         else p.hkOk = false;
     }
+    g_wheelOk = true;
+    if (g_wheelVk) {
+        if (RegisterHotKey(nullptr, kWheelHotkey, g_wheelMods | MOD_NOREPEAT, g_wheelVk)) g_registered.push_back(kWheelHotkey);
+        else g_wheelOk = false;
+    }
     g_stopOk = true;
     if (g_stopVk) {
         if (RegisterHotKey(nullptr, kStopHotkey, g_stopMods | MOD_NOREPEAT, g_stopVk)) g_registered.push_back(kStopHotkey);
@@ -233,7 +253,11 @@ void stop() {
 void reload() {
     std::ifstream f(std::filesystem::path(g_dir + L"\\soundboard.ini"), std::ios::binary);
     std::vector<Pad> pads;
-    float micVol = 80, locVol = 60; bool norm = true; UINT sm = 0, sv = 0;
+    float micVol = 80, locVol = 60; bool norm = true; UINT sm = 0, sv = 0, wm = 0, wv = 0;
+    std::vector<std::string> cats;
+    struct Meta { bool fav; uint32_t a, b; std::string cat; };
+    std::vector<std::pair<std::string, Meta>> metas;
+    std::vector<std::pair<std::string, std::string>> labels;
     std::string line;
     while (std::getline(f, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
@@ -245,6 +269,14 @@ void reload() {
         else if (k == "local_volume") locVol = (float)std::atof(v.c_str());
         else if (k == "normalize") norm = v == "1";
         else if (k == "stop_hotkey") parseHotkey(v, sm, sv);
+        else if (k == "wheel_hotkey") parseHotkey(v, wm, wv);
+        else if (k == "cat") { if (!v.empty()) cats.push_back(v); }
+        else if (k == "label") { size_t b = v.find('|'); if (b != std::string::npos) labels.push_back({ v.substr(0, b), v.substr(b + 1) }); }
+        else if (k == "meta") {   // meta=<id>|<obľúbený 0/1>|<začiatok ms>|<koniec ms>|<kategória>
+            std::vector<std::string> f; size_t a = 0;
+            for (int i = 0; i < 4; ++i) { size_t b = v.find('|', a); if (b == std::string::npos) break; f.push_back(v.substr(a, b - a)); a = b + 1; }
+            if (f.size() == 4) metas.push_back({ f[0], { f[1] == "1", (uint32_t)std::strtoul(f[2].c_str(), nullptr, 10), (uint32_t)std::strtoul(f[3].c_str(), nullptr, 10), v.substr(a) } });
+        }
         else if (k == "pad") {
             std::vector<std::string> parts; size_t a = 0;
             for (int i = 0; i < 4; ++i) { size_t b = v.find('|', a); if (b == std::string::npos) break; parts.push_back(v.substr(a, b - a)); a = b + 1; }
@@ -254,8 +286,14 @@ void reload() {
             if (!p.id.empty() && !p.file.empty()) pads.push_back(std::move(p));
         }
     }
+    for (auto& p : pads) {
+        for (auto& m : metas) if (m.first == p.id) { p.fav = m.second.fav; p.startMs = m.second.a; p.endMs = m.second.b; p.cat = m.second.cat; }
+        for (auto& l : labels) if (l.first == p.id) p.label = l.second;
+    }
     std::lock_guard<std::mutex> lk(g_mx);
     g_pads = std::move(pads);
+    g_cats = std::move(cats);
+    g_wheelMods = wm; g_wheelVk = wv;
     g_micVol = std::max(0.0f, std::min(1.5f, micVol / 100.0f));
     g_locVol = std::max(0.0f, std::min(1.5f, locVol / 100.0f));
     g_normalize = norm; g_stopMods = sm; g_stopVk = sv;
@@ -264,6 +302,7 @@ void reload() {
 
 void onHotkey(int id) {
     if (id == kStopHotkey) { stopAll(); return; }
+    if (id == kWheelHotkey) { UINT vk; { std::lock_guard<std::mutex> lk(g_mx); vk = g_wheelVk; } if (g_onWheel) g_onWheel(vk); return; }
     std::string pid;
     { std::lock_guard<std::mutex> lk(g_mx); if (id >= 1 && id <= (int)g_pads.size()) pid = g_pads[id - 1].id; }
     if (!pid.empty()) play(pid);
@@ -282,7 +321,7 @@ void play(const std::string& id) {
     const uint32_t rate = g_rate.load();
     std::thread([pad, micVol, locVol, norm, rate] {
         std::string err;
-        auto pcm = decode(padPath(pad), rate, err);
+        auto pcm = decode(padPath(pad), rate, err, pad.startMs, pad.endMs);
         if (!pcm) return;
         float g = pad.vol;
         if (norm) {
@@ -306,6 +345,19 @@ void stopAll() {
     notify();
 }
 
+View view() {
+    std::lock_guard<std::mutex> lk(g_mx);
+    View v; v.cats = g_cats;
+    for (auto& p : g_pads) v.pads.push_back({ p.id, p.name, p.cat, p.label, p.fav });
+    return v;
+}
+bool isPlaying(const std::string& id) {
+    std::lock_guard<std::mutex> lk(g_mx);
+    for (auto& v : g_voices) if (v.id == id && !(v.micDone && v.locDone)) return true;
+    return false;
+}
+void setWheelHandler(void (*fn)(UINT vk)) { g_onWheel = fn; }
+
 bool hasPads() { std::lock_guard<std::mutex> lk(g_mx); return !g_pads.empty(); }
 
 std::string statusJson() {
@@ -317,7 +369,8 @@ std::string statusJson() {
     o << "],\"hk_fail\":[";
     first = true;
     for (auto& p : g_pads) if (!p.hkOk) { if (!first) o << ","; first = false; o << "\"" << jsonEsc(p.id) << "\""; }
-    if (!g_stopOk) { if (!first) o << ","; o << "\"stop\""; }
+    if (!g_stopOk) { if (!first) o << ","; first = false; o << "\"stop\""; }
+    if (!g_wheelOk) { if (!first) o << ","; o << "\"wheel\""; }
     o << "]}";
     return o.str();
 }

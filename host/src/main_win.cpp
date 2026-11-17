@@ -28,6 +28,7 @@
 #include "hmo/bridge.h"
 #include "hmo/params.h"
 #include "soundboard.h"
+#include "overlay.h"
 #include "pluginterfaces/gui/iplugview.h"
 #include "pluginterfaces/gui/iplugviewcontentscalesupport.h"
 
@@ -444,6 +445,7 @@ static LRESULT CALLBACK MsgProc(HWND h, UINT m, WPARAM wp, LPARAM lp) {
         else if (cmd.rfind("play ", 0) == 0) sb::play(cmd.substr(5));
         else if (cmd == "stopall") sb::stopAll();
         else if (cmd == "sbreload") sb::reload();
+        else if (cmd == "wheel") ov::toggle(0);
         else if (cmd == "quit") PostQuitMessage(0);
         writeStatus();
         return TRUE;
@@ -495,6 +497,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     g_cfgStamp = {}; g_vstWanted = false; checkEngine();
     checkChainFile(true);
     sb::start(g_dir, g_msgWnd, WM_HMO_SB);
+    ov::init(inst);
+    sb::setWheelHandler([](UINT vk) { ov::toggle(vk); });
     SetTimer(g_msgWnd, 1, 300, nullptr);
     SetTimer(g_msgWnd, 2, 1000, nullptr);
     std::thread audio(audioThread);
@@ -508,6 +512,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int) {
     g_quit = true;
     audio.join();
     sb::stop();
+    ov::shutdown();
     for (auto& s : g_slots) closeEditor(*s);
     { std::lock_guard<std::mutex> lk(g_chainMx); g_chain.clear(); }
     g_slots.clear();

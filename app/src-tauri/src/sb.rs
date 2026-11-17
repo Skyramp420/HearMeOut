@@ -20,6 +20,10 @@ pub struct Pad {
     pub vol: f32,          // %
     pub hk: String,        // "mods,vk" alebo ""
     pub hk_label: String,
+    #[serde(default)] pub fav: bool,
+    #[serde(default)] pub cat: String,
+    #[serde(default)] pub start_ms: u32,
+    #[serde(default)] pub end_ms: u32,      // 0 = do konca
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -29,11 +33,14 @@ pub struct Board {
     pub normalize: bool,
     pub stop_hk: String,
     pub stop_label: String,
+    #[serde(default)] pub wheel_hk: String,
+    #[serde(default)] pub wheel_label: String,
+    #[serde(default)] pub cats: Vec<String>,
     pub pads: Vec<Pad>,
 }
 impl Default for Board {
     fn default() -> Self {
-        Board { mic_volume: 80.0, local_volume: 60.0, normalize: true, stop_hk: String::new(), stop_label: String::new(), pads: vec![] }
+        Board { mic_volume: 80.0, local_volume: 60.0, normalize: true, stop_hk: String::new(), stop_label: String::new(), wheel_hk: String::new(), wheel_label: String::new(), cats: vec![], pads: vec![] }
     }
 }
 
@@ -46,6 +53,7 @@ pub fn read_board() -> Board {
     let t = std::fs::read_to_string(app_dir().join("soundboard.ini")).unwrap_or_default();
     let mut b = Board::default();
     let mut labels = std::collections::HashMap::new();
+    let mut metas: std::collections::HashMap<String, (bool, u32, u32, String)> = std::collections::HashMap::new();
     for l in t.lines() {
         let Some((k, v)) = l.split_once('=') else { continue };
         match k {
@@ -54,17 +62,27 @@ pub fn read_board() -> Board {
             "normalize" => b.normalize = v == "1",
             "stop_hotkey" => b.stop_hk = v.to_string(),
             "stop_label" => b.stop_label = v.to_string(),
+            "wheel_hotkey" => b.wheel_hk = v.to_string(),
+            "wheel_label" => b.wheel_label = v.to_string(),
+            "cat" => { if !v.is_empty() { b.cats.push(v.to_string()); } }
+            "meta" => {
+                let f: Vec<&str> = v.splitn(5, '|').collect();
+                if f.len() == 5 { metas.insert(f[0].into(), (f[1] == "1", f[2].parse().unwrap_or(0), f[3].parse().unwrap_or(0), f[4].into())); }
+            }
             "label" => { if let Some((id, lab)) = v.split_once('|') { labels.insert(id.to_string(), lab.to_string()); } }
             "pad" => {
                 let p: Vec<&str> = v.splitn(5, '|').collect();
                 if p.len() == 5 {
-                    b.pads.push(Pad { id: p[0].into(), vol: p[1].parse().unwrap_or(100.0), hk: p[2].into(), file: p[3].into(), name: p[4].into(), hk_label: String::new() });
+                    b.pads.push(Pad { id: p[0].into(), vol: p[1].parse().unwrap_or(100.0), hk: p[2].into(), file: p[3].into(), name: p[4].into(), ..Default::default() });
                 }
             }
             _ => {}
         }
     }
-    for p in &mut b.pads { if let Some(l) = labels.get(&p.id) { p.hk_label = l.clone(); } }
+    for p in &mut b.pads {
+        if let Some(l) = labels.get(&p.id) { p.hk_label = l.clone(); }
+        if let Some(m) = metas.get(&p.id) { p.fav = m.0; p.start_ms = m.1; p.end_ms = m.2; p.cat = m.3.clone(); }
+    }
     b
 }
 
@@ -77,12 +95,17 @@ pub fn sb_set(board: Board) -> Result<(), String> {
     s += &format!("mic_volume={}\nlocal_volume={}\nnormalize={}\n", board.mic_volume.clamp(0.0, 150.0), board.local_volume.clamp(0.0, 150.0), if board.normalize { 1 } else { 0 });
     if !valid_hk(&board.stop_hk) { return Err("Neplatná skratka.".into()); }
     s += &format!("stop_hotkey={}\nstop_label={}\n", board.stop_hk, clean(&board.stop_label));
+    if !valid_hk(&board.wheel_hk) { return Err("Neplatná skratka.".into()); }
+    s += &format!("wheel_hotkey={}\nwheel_label={}\n", board.wheel_hk, clean(&board.wheel_label));
+    for c in &board.cats { let c = clean(c); if !c.trim().is_empty() { s += &format!("cat={}\n", c.trim()); } }
     for p in &board.pads {
         if p.id.is_empty() || p.id.contains('|') || p.id.contains(' ') || p.file.contains('|') || p.file.contains('\n') || !valid_hk(&p.hk) {
             return Err("Neplatný zvuk v zozname.".into());
         }
         s += &format!("pad={}|{}|{}|{}|{}\n", p.id, p.vol.clamp(0.0, 200.0), p.hk, p.file, clean(&p.name));
         if !p.hk_label.is_empty() { s += &format!("label={}|{}\n", p.id, clean(&p.hk_label)); }
+        let (a, e) = (p.start_ms, if p.end_ms > p.start_ms { p.end_ms } else { 0 });
+        s += &format!("meta={}|{}|{}|{}|{}\n", p.id, if p.fav { 1 } else { 0 }, a, e, clean(&p.cat).trim());
     }
     let path = app_dir().join("soundboard.ini");
     let tmp = path.with_extension("ini.tmp");
@@ -120,7 +143,7 @@ pub fn sb_import(paths: Vec<String>) -> Result<Vec<Pad>, String> {
         let file = format!("{id}.{ext}");
         std::fs::copy(&src, sounds_dir().join(&file)).map_err(|e| format!("Neviem skopírovať {name}: {e}"))?;
         let short: String = name.replace(['_', '-'], " ").chars().take(40).collect();
-        out.push(Pad { id, name: short.trim().to_string(), file, vol: 100.0, hk: String::new(), hk_label: String::new() });
+        out.push(Pad { id, name: short.trim().to_string(), file, vol: 100.0, ..Default::default() });
     }
     if out.is_empty() && !skipped.is_empty() {
         return Err("Podporované sú súbory MP3, WAV a FLAC (do 60 MB).".into());
@@ -133,6 +156,35 @@ pub fn sb_play(id: String) -> Result<(), String> {
     if id.contains('\n') { return Err("Neplatný zvuk.".into()); }
     crate::host::host_start()?;
     crate::host::send(&format!("play {id}"))
+}
+
+/// Obsah skopírovaného zvuku (base64) – editor strihu si ho dekóduje sám.
+#[tauri::command]
+pub fn sb_audio(file: String) -> Result<String, String> {
+    if file.is_empty() || file.contains(['/', '\\', ':']) || file.contains("..") { return Err("Neplatný súbor.".into()); }
+    let bytes = std::fs::read(sounds_dir().join(&file)).map_err(|e| format!("Zvuk sa nedá načítať: {e}"))?;
+    Ok(b64(&bytes))
+}
+fn b64(d: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut o = String::with_capacity(d.len().div_ceil(3) * 4);
+    for c in d.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        o.push(T[(n >> 18) as usize & 63] as char);
+        o.push(T[(n >> 12) as usize & 63] as char);
+        o.push(if c.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+        o.push(if c.len() > 2 { T[n as usize & 63] as char } else { '=' });
+    }
+    o
+}
+
+/// Otvorí koleso zvukov (vyskúšanie z appky).
+#[tauri::command]
+pub fn sb_wheel() -> Result<(), String> {
+    crate::host::host_start()?;
+    #[cfg(windows)]
+    unsafe { windows_sys::Win32::UI::WindowsAndMessaging::AllowSetForegroundWindow(u32::MAX); }
+    crate::host::send("wheel")
 }
 
 #[tauri::command]

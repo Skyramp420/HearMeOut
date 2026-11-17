@@ -418,7 +418,7 @@ fn main() {
             monitor_start, monitor_stop, monitor_volume,
             host::vst_scan, host::vst_chain_get, host::vst_chain_set, host::host_status,
             host::host_start, host::host_stop, host::host_open_editor, host::host_autostart,
-            sb::sb_get, sb::sb_set, sb::sb_import, sb::sb_play, sb::sb_stop, sb::sb_pick,
+            sb::sb_get, sb::sb_set, sb::sb_import, sb::sb_play, sb::sb_stop, sb::sb_pick, sb::sb_audio, sb::sb_wheel,
             update::update_check, update::update_install
         ])
         .run(tauri::generate_context!())

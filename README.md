@@ -15,7 +15,7 @@ Aktualizácie: appka sa pri štarte sama pozrie, či je nová verzia, a ponúkne
 
 - **Vlastné efekty** – čistenie šumu, tlmenie v tichu, dynamika (Opto / Opto+FET / FET) s analógovou farbou, tón s krivkou, de-esser, limiter.
 - **VST pluginy** – tvoje VST3 pluginy (napr. Speachy, Xvox) bežia v malom hostiteľovi pod tvojím účtom a zvuk ide rovno do mikrofónu. Licencie fungujú ako v Light Hoste; ak host spadne, mikrofón sa prepne na vlastné efekty.
-- **Soundboard** – MP3/WAV/FLAC zvuky s globálnymi klávesovými skratkami (fungujú aj v hre). Idú priamo do mikrofónu a zároveň do tvojich slúchadiel, s vlastnou hlasitosťou a vyrovnaním hlasitosti.
+- **Soundboard** – MP3/WAV/FLAC zvuky s globálnymi klávesovými skratkami (fungujú aj v hre). Idú priamo do mikrofónu a zároveň do tvojich slúchadiel, s vlastnou hlasitosťou a vyrovnaním hlasitosti. Kategórie, obľúbené, nedeštruktívny strih a **koleso zvukov** (podrž skratku, ukáž myšou, pusti) nad hrou.
 - **Hlasové efekty** – chipmunk, monštrum, robot, vysielačka, telefón, megafón, jaskyňa, mimozemšťan. Fungujú v oboch režimoch (aj za VST pluginmi).
 - **Odposluch** a A/B (klávesa **B**), živé metre, presety.
 
